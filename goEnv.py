@@ -32,8 +32,12 @@ class GoGame:
 
             if self.consecutivePasses == 2:
                 print("Game is over")
+
+                # NOTE: Move later ---
                 self.get_areas()
                 print(self.capture_balance)
+                # NOTE: ---
+
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
@@ -42,7 +46,7 @@ class GoGame:
 
         x, y = action
         self.board[x, y] = self.turn
-        captured_stones = self.check_captures(x, y)  # Capture logic
+        captured_stones = self.check_captures(x, y, True)  # Capture logic
 
         self.history.append(self.board.copy())
         self.turn = 3 - self.turn  # Switch turns
@@ -61,7 +65,7 @@ class GoGame:
                 if self.board[i, j] == 0:
                     # Temporarily place a stone to check if it results in a legal move
                     self.board[i, j] = self.turn
-                    captured = self.check_captures(i, j)
+                    captured = self.check_captures(i, j, False)
 
                     # Check if placing this stone results in a self-capture or captures opponent stones and that the move
                     if (not self.is_self_capture((i, j)) or captured) and not self.is_ko():
@@ -147,7 +151,7 @@ class GoGame:
 
     """Check and capture any opponent groups that have no liberties."""
 
-    def check_captures(self, x, y):
+    def check_captures(self, x, y, is_check):
         opponent = 3 - self.turn
         captured_stones = []
 
@@ -159,14 +163,14 @@ class GoGame:
                     captured_stones.extend(group)
 
                     for gx, gy in group:
-                        # print("remove ", opponent)
                         self.board[gx, gy] = 0  # Remove captured stones
 
                         # Update capture balance
-                        if opponent == 1:
-                            self.capture_balance -= 1
-                        else:
-                            self.capture_balance += 1
+                        if (is_check):
+                            if opponent == 1:
+                                self.capture_balance -= 1
+                            else:
+                                self.capture_balance += 1
 
         return captured_stones
 
@@ -193,6 +197,7 @@ class GoGame:
         labeled_empty_matrix, num_empty_areas = label(
             empty_matrix)
 
+        # Checks each empty area whether its black territory, white territory or neither
         for area in range(1, num_empty_areas + 1):
             # Isolate specific empty-cluster and converting to boolean array
             empty_area = labeled_empty_matrix == area
@@ -200,11 +205,13 @@ class GoGame:
 
             black_claim = False
             white_claim = False
+
             # Extract all white and black pieces into separate boards
             black_board = np.where(self.board == 1, 1, 0)
             white_board = np.where(self.board == 2, 1, 0)
 
-            # Elementwise multiplication between black/white board and neighbors. If any product > 0, the area has a neighbor of that color
+            # Elementwise multiplication between black/white board and neighbors.
+            # If any product > 0, the area has a neighbor of that color (the border of an empty area is black/white)
             if (black_board * neighbors > 0).any():
                 black_claim = True
             if (white_board * neighbors > 0).any():
