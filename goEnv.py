@@ -12,6 +12,7 @@ class GoGame:
     def reset(self):
         self.board = np.zeros((self.size, self.size), dtype=int)
         self.turn = 1
+        self.consecutivePasses = 0
         self.history = []
         return self.board
     
@@ -21,8 +22,17 @@ class GoGame:
             raise ValueError("Illegal move.")
 
         if action == "pass":
+            print("pass")
+            self.consecutivePasses += 1
             self.turn = 3 - self.turn  # Switch turns
+
+            if self.consecutivePasses == 2:
+                print("Game is over")
+                return self.board, 0, True
+
             return self.board, 0, False  # No reward for passing, game not over
+        
+        self.consecutivePasses = 0
 
         x, y = action
         self.board[x, y] = self.turn
@@ -161,7 +171,6 @@ class GoGame:
 #Example Usage
 game = GoGame(size=7)
 game.reset()
-game.render_in_terminal()
 print(game.get_legal_actions())
 game.step((0, 2))
 game.step((0, 1))
@@ -174,5 +183,15 @@ game.step((0, 4))
 game.step((0, 2))
 game.step((3, 3))
 game.step((5, 5))
+game.render_in_terminal()
+
+# Reset game when two consecutive passes
+_, _, game_over = game.step("pass")
+if game_over:
+    game.reset()
+
+_, _, game_over = game.step(("pass"))
+if game_over:
+    game.reset()
 game.render_in_terminal()
 """
