@@ -2,15 +2,16 @@ import os
 import tarfile
 
 # Define paths
-dataset_folder = 'datasets'
+dataset_folder = 'compressed_datasets'
 data_folder = 'data'
 
 try: 
-    os.mkdir('data')
-    os.mkdir('data/Kifu')
-    os.mkdir('data/Top50')
+    os.mkdir(data_folder)
+    os.mkdir(data_folder + '/Kifu')
+    os.mkdir(data_folder + '/Top50')
 except FileExistsError:
-    print('')
+    print('Datasets are already decompressed.')
+    exit()
 
 # Define the mapping of tgz files to their respective folders
 folder_mapping = {
@@ -24,7 +25,7 @@ folder_mapping = {
 for folder in folder_mapping.values():
     os.makedirs(os.path.join(data_folder, folder), exist_ok=True)
 
-# Unzip and move files
+# Decompress and move files
 for tgz_file, target_folder in folder_mapping.items():
     tgz_path = os.path.join(dataset_folder, tgz_file)
     extract_path = os.path.join(data_folder, target_folder)
@@ -32,4 +33,4 @@ for tgz_file, target_folder in folder_mapping.items():
     with tarfile.open(tgz_path, 'r:gz') as tar_ref:
         tar_ref.extractall(extract_path)
 
-print("Datasets have been unzipped and placed in their respective folders.")
+print("Datasets have been decompressed and placed in their respective folders in /data.")
