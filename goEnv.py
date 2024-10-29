@@ -8,7 +8,6 @@ class GoGame:
         self.board = np.zeros((self.size, self.size), dtype=int)
         self.turn = 1  # 1 for black, 2 for white
 
-        # TODO: Implement Ko rules
         self.history = []  # To track past board states (for Ko rules)
 
     def reset(self):
@@ -32,7 +31,7 @@ class GoGame:
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
-        
+
         self.consecutivePasses = 0
 
         x, y = action
@@ -162,8 +161,6 @@ class GoGame:
         white_stones = sum(1 for i in range(self.size)
                            for j in range(self.size) if self.board[i, j] == 2)
         return black_stones, white_stones
-
-    # TODO: Implement a simple checks for consecutive passes and no more legal moves
 
     def is_game_over(self):
         return False
