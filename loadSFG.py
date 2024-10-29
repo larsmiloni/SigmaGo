@@ -47,10 +47,7 @@ path = cwd + '/data'
 pickleRoot = 'pickles/pickleFile_'
 
 kifuPath = path + '/Kifu/'
-proPath = path + '/Pro/'
-nngsPath = path + '/NNGS/'
 top50Path = path + '/Top50/'
-onlinePath = path + '/OnlineGo/'
 
 globalCount = 1 # Number of pickle files needed
 print("globalCount: ", globalCount)
@@ -738,9 +735,6 @@ blackWinByResignationFound = 0
 
 
 loadFiles(kifuPath, "NoResignation", "ELO")
-loadFiles(proPath, "WithResignation", "None")
-loadFiles(nngsPath, "WithResignation", "Traditional")
-loadFiles(onlinePath, "WithResignation", "Traditional")
 loadFiles(top50Path, "NoResignation", "ELO")
 
 print("Handicap games found: ", handicapFound)
