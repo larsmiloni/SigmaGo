@@ -32,5 +32,6 @@ for tgz_file, target_folder in folder_mapping.items():
     
     with tarfile.open(tgz_path, 'r:gz') as tar_ref:
         tar_ref.extractall(extract_path)
+        print(f"{tgz_file} has been decompressed to {extract_path}")
 
 print("Datasets have been decompressed and placed in their respective folders in /data.")
