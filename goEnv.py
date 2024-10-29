@@ -1,12 +1,13 @@
 import numpy as np
 
+
 class GoGame:
     def __init__(self, size=9):
         self.size = size
+        # Empty = 0, black = 1, white = 2
         self.board = np.zeros((self.size, self.size), dtype=int)
         self.turn = 1  # 1 for black, 2 for white
 
-        #TODO: Implement Ko rules
         self.history = []  # To track past board states (for Ko rules)
 
     def reset(self):
@@ -15,7 +16,6 @@ class GoGame:
         self.consecutivePasses = 0
         self.history = []
         return self.board
-    
 
     def step(self, action):
         if action not in self.get_legal_actions():
@@ -31,7 +31,7 @@ class GoGame:
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
-        
+
         self.consecutivePasses = 0
 
         x, y = action
@@ -40,10 +40,11 @@ class GoGame:
 
         self.history.append(self.board.copy())
         self.turn = 3 - self.turn  # Switch turns
-        return self.board, len(captured_stones), self.is_game_over()  # Reward is number of captured stones
-
+        # Reward is number of captured stones
+        return self.board, len(captured_stones), self.is_game_over()
 
     """Get all legal moves on the board. Pass is always a legal move."""
+
     def get_legal_actions(self):
         legal_moves = []
         size = self.size
@@ -55,8 +56,8 @@ class GoGame:
                     self.board[i, j] = self.turn
                     captured = self.check_captures(i, j)
 
-                    # Check if placing this stone results in a self-capture or captures opponent stones
-                    if not self.is_self_capture((i, j)) or captured:
+                    # Check if placing this stone results in a self-capture or captures opponent stones and that the move
+                    if (not self.is_self_capture((i, j)) or captured) and not self.is_ko():
                         legal_moves.append((i, j))
 
                     # Reset the board after checking
@@ -68,8 +69,16 @@ class GoGame:
         legal_moves.append("pass")
         return legal_moves
 
+    """Check that move does not repeat a previous board instance."""
+
+    def is_ko(self):
+        for board in self.history:
+            if np.array_equal(board, self.board):
+                return True
+        return False
 
     """Check if placing a stone at the given move results in self-capture."""
+
     def is_self_capture(self, move):
         x, y = move
 
@@ -91,8 +100,8 @@ class GoGame:
         # If no liberties and no opponent captures, it's a self-capture
         return True
 
-
     """Get all stones connected to the given intersection (same color)."""
+
     def get_group(self, intersection):
         x, y = intersection
         color = self.board[x, y]
@@ -116,21 +125,21 @@ class GoGame:
 
         dfs(x, y)
         return group
-    
 
     """Check if an intersection has any empty intersections adjacent to it (has liberties)."""
+
     def hasLiberties(self, intersection):
         x, y = intersection
         size = len(self.board)
-        
+
         for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
             if 0 <= nx < size and 0 <= ny < size and self.board[nx][ny] == 0:
                 return True
 
         return False
 
-
     """Check and capture any opponent groups that have no liberties."""
+
     def check_captures(self, x, y):
         opponent = 3 - self.turn
         captured_stones = []
@@ -145,25 +154,23 @@ class GoGame:
                         self.board[gx, gy] = 0  # Remove captured stones
 
         return captured_stones
-    
 
     def count_stones(self):
-        black_stones = sum(1 for i in range(self.size) for j in range(self.size) if self.board[i, j] == 1)
-        white_stones = sum(1 for i in range(self.size) for j in range(self.size) if self.board[i, j] == 2)
+        black_stones = sum(1 for i in range(self.size)
+                           for j in range(self.size) if self.board[i, j] == 1)
+        white_stones = sum(1 for i in range(self.size)
+                           for j in range(self.size) if self.board[i, j] == 2)
         return black_stones, white_stones
-    
 
-    #TODO: Implement a simple checks for consecutive passes and no more legal moves
     def is_game_over(self):
         return False
-    
 
     def render_in_terminal(self):
         print("  0 1 2 3 4 5 6")
         for i, row in enumerate(self.board):
             row_print = str(i) + " "
             row_print += '─'.join(['┼' if cell == 0
-            else ('○' if cell == 1 else '●') for cell in row])
+                                   else ('○' if cell == 1 else '●') for cell in row])
             print(row_print)
 
 
