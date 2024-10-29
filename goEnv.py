@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.ndimage import label, binary_dilation
 
 
 class GoGame:
@@ -9,6 +10,9 @@ class GoGame:
         self.turn = 1  # 1 for black, 2 for white
 
         self.history = []  # To track past board states (for Ko rules)
+
+        # negative if white captures more, positive if black captures more
+        self.capture_balance = 0
 
     def reset(self):
         self.board = np.zeros((self.size, self.size), dtype=int)
@@ -28,6 +32,8 @@ class GoGame:
 
             if self.consecutivePasses == 2:
                 print("Game is over")
+                self.get_areas()
+                print(self.capture_balance)
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
@@ -40,6 +46,7 @@ class GoGame:
 
         self.history.append(self.board.copy())
         self.turn = 3 - self.turn  # Switch turns
+
         # Reward is number of captured stones
         return self.board, len(captured_stones), self.is_game_over()
 
@@ -150,8 +157,16 @@ class GoGame:
                 group = self.get_group((nx, ny))
                 if not any(self.hasLiberties(stone) for stone in group):
                     captured_stones.extend(group)
+
                     for gx, gy in group:
+                        # print("remove ", opponent)
                         self.board[gx, gy] = 0  # Remove captured stones
+
+                        # Update capture balance
+                        if opponent == 1:
+                            self.capture_balance -= 1
+                        else:
+                            self.capture_balance += 1
 
         return captured_stones
 
@@ -161,6 +176,46 @@ class GoGame:
         white_stones = sum(1 for i in range(self.size)
                            for j in range(self.size) if self.board[i, j] == 2)
         return black_stones, white_stones
+
+    """ Gets the value of territory for both black and white areas """
+
+    def get_areas(self):
+
+        # TODO: Implement check for prisoners
+
+        black_area, white_area = 0, 0
+
+        # Matrix that shows all empty intersections
+        empty_matrix = np.array([[1 if self.board[x, y] == 0 else 0 for y in range(
+            len(self.board[0]))] for x in range(len(self.board))])
+
+        # Clusters intersections with labels 1, 2, 3 etc.
+        labeled_empty_matrix, num_empty_areas = label(
+            empty_matrix)
+
+        for area in range(1, num_empty_areas + 1):
+            # Isolate specific empty-cluster and converting to boolean array
+            empty_area = labeled_empty_matrix == area
+            neighbors = binary_dilation(empty_area)
+
+            black_claim = False
+            white_claim = False
+            # Extract all white and black pieces into separate boards
+            black_board = np.where(self.board == 1, 1, 0)
+            white_board = np.where(self.board == 2, 1, 0)
+
+            # Elementwise multiplication between black/white board and neighbors. If any product > 0, the area has a neighbor of that color
+            if (black_board * neighbors > 0).any():
+                black_claim = True
+            if (white_board * neighbors > 0).any():
+                white_claim = True
+            if black_claim and not white_claim:
+                black_area += np.sum(empty_area)
+            elif white_claim and not black_claim:
+                white_area += np.sum(empty_area)
+
+        print("black area: ", black_area, " white area: ", white_area)
+        return black_area, white_area
 
     def is_game_over(self):
         return False
@@ -174,8 +229,36 @@ class GoGame:
             print(row_print)
 
 
+game = GoGame(size=5)
+game.reset()
+print(game.get_legal_actions())
+game.step((0, 2))
+game.step((0, 1))
+game.step((0, 3))
+game.step((1, 2))
+game.step((4, 2))
+game.step((1, 3))
+game.step((4, 3))
+game.step((0, 4))
+game.step((0, 2))
+game.step((3, 3))
+game.step((4, 4))
+game.step((2, 3))
+game.step((4, 1))
+game.step((3, 4))
+game.render_in_terminal()
+
+# Reset game when two consecutive passes
+_, _, game_over = game.step("pass")
+if game_over:
+    game.reset()
+
+_, _, game_over = game.step(("pass"))
+if game_over:
+    game.reset()
+
 """
-#Example Usage
+# Example Usage
 game = GoGame(size=7)
 game.reset()
 print(game.get_legal_actions())
@@ -200,5 +283,4 @@ if game_over:
 _, _, game_over = game.step(("pass"))
 if game_over:
     game.reset()
-game.render_in_terminal()
 """
