@@ -57,7 +57,10 @@ class GoGameGUI:
         if legal_moves:
             # Choose a random legal move and make it
             move = random.choice(legal_moves)
-            self.game.step(move)
+            _, _, game_over = self.game.step(move)
+            if game_over:
+                print("Game over by random move")
+                self.running = False
 
 
     def run(self):
@@ -83,14 +86,13 @@ class GoGameGUI:
                 self.make_random_move()
                 self.last_move_time = current_time  # Update last move time
             """
-
+                    
             self.draw_board()
             pygame.display.flip()
-            
-            
+
 if __name__ == "__main__":
     pygame.init()
-    game = GoGame(size=7)
+    game = GoGame(size=5)
     gui = GoGameGUI(game)
     gui.run()
     pygame.quit()
