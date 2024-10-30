@@ -22,16 +22,29 @@ folder_mapping = {
 }
 
 # Create the destination folders if they don't exist
-for folder in folder_mapping.values():
-    os.makedirs(os.path.join(data_folder, folder), exist_ok=True)
+for folder in set(folder_mapping.values()):
+    path = os.path.join(data_folder, folder)
+    os.makedirs(path, exist_ok=True)
+    os.mkdir(f'{path}/nine')
+    os.mkdir(f'{path}/nine/nine_weak')
+    os.mkdir(f'{path}/nine/nine_strong')
+    os.mkdir(f'{path}/nine/nine_mixed')
+    os.mkdir(f'{path}/nine/nine_not_needed')
+    os.mkdir(f'{path}/other')
+    os.mkdir(f'{path}/too_small')
+    os.mkdir(f'{path}/error')
 
-# Decompress and move files
+
 for tgz_file, target_folder in folder_mapping.items():
     tgz_path = os.path.join(dataset_folder, tgz_file)
     extract_path = os.path.join(data_folder, target_folder)
     
     with tarfile.open(tgz_path, 'r:gz') as tar_ref:
-        tar_ref.extractall(extract_path)
+        for member in tar_ref.getmembers():
+            # Remove any initial directory component from the file path
+            member.name = os.path.basename(member.name)
+            tar_ref.extract(member, extract_path)
+        
         print(f"{tgz_file} has been decompressed to {extract_path}")
 
 print("Datasets have been decompressed and placed in their respective folders in /data.")
