@@ -2,79 +2,33 @@ import tensorflow as tf
 import numpy as np
 import copy
 import math
-import os
 from goEnv import GoGame  # Import GoGame from the appropriate module
 
 
-class PreTrainedGoNetwork:
+class PreTrainedGoNetwork(tf.keras.Model):
     def __init__(self, checkpoint_path):
-        self.graph = tf.Graph()
-        with self.graph.as_default():
-            # Define the same network architecture as in trainCNN.py
-            self.num_nodes = 1024
-            
-            # Placeholders
-            self.input_layer = tf.placeholder(tf.float32, shape=(None, 83))
-            
-            # Variables with the same names as in original training
-            self.weights_1 = tf.Variable(tf.truncated_normal([83, self.num_nodes]), name='weights_1')
-            self.biases_1 = tf.Variable(tf.zeros([self.num_nodes]), name='biases_1')
-            self.weights_2 = tf.Variable(tf.truncated_normal([self.num_nodes, 83]), name='weights_2')
-            self.biases_2 = tf.Variable(tf.zeros([83]), name='biases_2')
-            
-            # Network architecture
-            self.relu_layer = tf.nn.relu(tf.matmul(self.input_layer, self.weights_1) + self.biases_1)
-            self.logits = tf.matmul(self.relu_layer, self.weights_2) + self.biases_2
-            self.prediction = tf.nn.softmax(self.logits)
-            
-            # Training ops
-            self.labels = tf.placeholder(tf.float32, shape=(None, 83))
-            self.loss = tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=self.labels)
-            )
-            self.optimizer = tf.train.GradientDescentOptimizer(0.01).minimize(self.loss)
-            
-            # Initialize session and load checkpoint
-            self.session = tf.Session(graph=self.graph)
-            saver = tf.train.Saver()
-            saver.restore(self.session, checkpoint_path)
-            
+        super().__init__()
+        self.num_nodes = 1024
+        self.input_layer = tf.keras.layers.Input(shape=(83,))
+        self.hidden_layer = tf.keras.layers.Dense(self.num_nodes, activation='relu')
+        self.output_layer = tf.keras.layers.Dense(83, activation='softmax')
+
+        # Load weights from the checkpoint
+        self.load_weights(checkpoint_path)
+    
+    @tf.function
+    def call(self, inputs):
+        x = self.hidden_layer(inputs)
+        return self.output_layer(x)
+    
     def predict(self, board_state):
-        # Convert board state to network input format
         network_input = self.prepare_input(board_state)
-        
-        with self.graph.as_default():
-            prediction = self.session.run(
-                self.prediction,
-                feed_dict={self.input_layer: network_input}
-            )
-        return prediction[0]
-    
-    def train_on_batch(self, states, labels):
-        with self.graph.as_default():
-            _, loss_value = self.session.run(
-                [self.optimizer, self.loss],
-                feed_dict={
-                    self.input_layer: states,
-                    self.labels: labels
-                }
-            )
-        return loss_value
-    
+        return self(network_input)[0]
+
     def prepare_input(self, board_state):
-        # Convert 9x9 board to 83-length input vector
-        # First 81 positions are the board state
-        # Position 81 is for PASS
-        # Position 82 is for RESIGN
         input_vector = np.zeros((1, 83))
         input_vector[0, :81] = board_state.flatten()
-        # We'll set PASS and RESIGN to 0 by default
         return input_vector
-    
-    def save_model(self, checkpoint_path):
-        with self.graph.as_default():
-            saver = tf.train.Saver()
-            saver.save(self.session, checkpoint_path)
 
 class MCTSNode:
     def __init__(self, game_state, parent=None, move=None, prior=0.0):
@@ -112,56 +66,36 @@ class MCTS:
         self.network = network
         self.num_simulations = num_simulations
         self.c_puct = c_puct
-        
+
     def search(self, game_state):
         root = MCTSNode(game_state)
-        
         for _ in range(self.num_simulations):
             node = root
             scratch_game = copy.deepcopy(game_state)
             
-            # Selection
             while node.is_expanded and not scratch_game.is_game_over():
                 move, node = node.select_child(self.c_puct)
                 scratch_game.step(move)
-            
-            # Expansion
+
             if not node.is_expanded and not scratch_game.is_game_over():
                 policy = self.network.predict(scratch_game.board)
                 valid_moves = scratch_game.get_legal_actions()
-                
-                # Create children for all valid moves
                 for move in valid_moves:
-                    if move == "pass":
-                        move_idx = 81  # PASS move index
-                    else:
-                        move_idx = move[0] * 9 + move[1]
-                    
+                    move_idx = move[0] * 9 + move[1] if move != "pass" else 81
                     new_game = copy.deepcopy(scratch_game)
                     new_game.step(move)
-                    node.children[move] = MCTSNode(
-                        new_game,
-                        parent=node,
-                        move=move,
-                        prior=policy[move_idx]
-                    )
+                    node.children[move] = MCTSNode(new_game, node, move, policy[move_idx])
                 node.is_expanded = True
-            
-            # Evaluation
-            if scratch_game.is_game_over():
-                value = self.evaluate_terminal(scratch_game)
-            else:
-                value = self.evaluate_position(scratch_game)
-            
-            # Backpropagation
-            while node is not None:
+
+            value = self.evaluate_terminal(scratch_game) if scratch_game.is_game_over() else self.evaluate_position(scratch_game)
+
+            while node:
                 node.visits += 1
                 node.value += value
                 node = node.parent
-        
-        # Select move based on visit counts
+
         visits = {move: child.visits for move, child in root.children.items()}
-        return max(visits.items(), key=lambda x: x[1])[0]
+        return max(visits, key=visits.get)
     
     
     def evaluate_terminal(self, game_state):
@@ -250,7 +184,10 @@ def train_network_on_data(network, training_data):
 if __name__ == "__main__":
     # Load pre-trained network
     checkpoint_path = "checkpoints/model.ckpt"
-    network = PreTrainedGoNetwork(checkpoint_path)
+    network = PreTrainedGoNetwork()
+    
+    # Load weights
+    network.load_weights(checkpoint_path)
     
     # Perform reinforcement learning through self-play
     improved_network = self_play_training(
@@ -259,5 +196,5 @@ if __name__ == "__main__":
         mcts_simulations=800
     )
     
-    # Save improved network
-    improved_network.save_model("checkpoints/model_improved.ckpt")
+    # Save the improved network
+    improved_network.save("checkpoints/model_improved")  # Saves full model
