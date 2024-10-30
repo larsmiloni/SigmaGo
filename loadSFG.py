@@ -1,39 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Dec  9 08:42:33 2016
-
-@author: nubby
-
-This file loads in SGF (Standard Go Format) data files from five data sources openly available on the web. 
-See README.md for the data source links. 
-
-SGF files are loaded into 9x9 matrices - one matrix for each move in each game. These
-are the features for the neural net training set.
-A corresponding array of 9x9 matrices are generated with the next human move played saved as a single one in an 
-array of zeros. This becomes the labels in the neural net training set. 
-
-This script first sorts the SGF files downloaded by size - 9x9 games versus other games.
-It then sorts the 9x9 games into strong and weak games. The definition of strong and weak 
-can be adjusted of course. I use stronger than 5 kyu in the traditional ranking system or 2000 in the ELO 
-ranking system. I know these two ranks do not line up but it was a function of how much data I had from 
-each data source.
-
-A recursive function checkGroup is used to establish what groups go stones belong to and then to 
-determine if a group has any liberties and is thus alive or has no liberties and is thus dead. Dead
-stones are removed from the matrix after each move. 
-
-The data is increased in size 8 fold by transforming each board position around its 8 symmetries: 
-rotating and flipping it. This increases the training set and also removes human bias (humans tend to
-follow etiquette about where the first move should be which affects the shape of the game. The games tend
-to be biased to splitting the board in the vertical dimension)
-
-At the end the matrix data is pickled into pickle files that are 1.5 million rows long each. These pickle 
-files are used in the next training step. 
-
-"""
-
-
 import numpy as np
 import glob
 import re
@@ -48,6 +12,11 @@ pickleRoot = 'pickles/pickleFile_'
 
 kifuPath = path + '/Kifu/'
 top50Path = path + '/Top50/'
+
+os.mkdir('pickles')
+os.mkdir('pickles_mixed')
+os.mkdir('checkpoints')
+os.mkdir('trainResults')
 
 globalCount = 1 # Number of pickle files needed
 print("globalCount: ", globalCount)
@@ -170,7 +139,7 @@ def transform_data(function_name, dataset, labelset):
             passValueD = dataset[x][81]
             resignValueD = dataset[x][82]
             eighty_one_dataset[x] = dataset[x][:-2]
-            temp = eighty_one_dataset[x].reshape(9,9)
+            temp = eighty_one_dataset[x].reshape(9, 9)
             temp = function_name(temp)
             eighty_one_dataset[x] = temp.reshape(81)
             eighty_three_dataset[x] = np.append(eighty_one_dataset[x], [passValueD, resignValueD])
@@ -178,7 +147,7 @@ def transform_data(function_name, dataset, labelset):
             passValueL = labelset[x][81]
             resignValueL = labelset[x][82]
             eighty_one_labelset[x] = labelset[x][:-2]
-            temp2 = eighty_one_labelset[x].reshape(9,9)
+            temp2 = eighty_one_labelset[x].reshape(9, 9)
             temp2 = function_name(temp2)
             eighty_one_labelset[x] = temp2.reshape(81)
             eighty_three_labelset[x] = np.append(eighty_one_labelset[x], [passValueL, resignValueL])
@@ -190,7 +159,7 @@ def transform_data(function_name, dataset, labelset):
 
 def pickleFiles(features, labels):
     
-    pickleFileCount = len(features)/1500000 + 1
+    pickleFileCount = int(len(features)/1500000 + 1)
     print("Number of pickle files needed for this sub dataset = " , pickleFileCount)
 
     
@@ -732,7 +701,6 @@ gameEndedByTimeFound = 0
 gameEndedInResignationFound  = 0
 whiteWinByResignationFound = 0
 blackWinByResignationFound = 0
-
 
 loadFiles(kifuPath, "NoResignation", "ELO")
 loadFiles(top50Path, "NoResignation", "ELO")
