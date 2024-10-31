@@ -5,6 +5,7 @@ import copy
 import pickle
 import timeit
 import os
+from pysgf import SGF
 
 cwd = os.getcwd()
 path = cwd + '/data'
@@ -125,37 +126,32 @@ def randomize(dataset, labels):
 
 #Expand dataset size by transforming it (flip, rotate)
 def transform_data(function_name, dataset, labelset):
+   transformed_datasets = []
+   transformed_labelsets = []
+   
+   for x in range(len(dataset)):
+       # Transform dataset
+       eighty_one_data = dataset[x][:-2].reshape(9, 9)
+       transformed_data = function_name(eighty_one_data).reshape(81)
+       pass_resign_data = [dataset[x][81], dataset[x][82]]
+       transformed_datasets.append(np.concatenate((transformed_data, pass_resign_data)))
 
-    if (len(dataset) > 0):
-            
-        eighty_one_dataset = np.empty(shape = (len(dataset), 81))
-        eighty_three_dataset = np.empty(shape = (len(dataset), 83))
-    
-        eighty_one_labelset = np.empty(shape = (len(labelset), 81))
-        eighty_three_labelset = np.empty(shape = (len(labelset), 83))   
-        
-        for x in range(len(dataset)):
-            
-            passValueD = dataset[x][81]
-            resignValueD = dataset[x][82]
-            eighty_one_dataset[x] = dataset[x][:-2]
-            temp = eighty_one_dataset[x].reshape(9, 9)
-            temp = function_name(temp)
-            eighty_one_dataset[x] = temp.reshape(81)
-            eighty_three_dataset[x] = np.append(eighty_one_dataset[x], [passValueD, resignValueD])
-    
-            passValueL = labelset[x][81]
-            resignValueL = labelset[x][82]
-            eighty_one_labelset[x] = labelset[x][:-2]
-            temp2 = eighty_one_labelset[x].reshape(9, 9)
-            temp2 = function_name(temp2)
-            eighty_one_labelset[x] = temp2.reshape(81)
-            eighty_three_labelset[x] = np.append(eighty_one_labelset[x], [passValueL, resignValueL])
-    
-        dataset = np.concatenate((dataset, eighty_three_dataset))
-        labelset = np.concatenate((labelset, eighty_three_labelset))
-        
-    return dataset, labelset      
+       # Transform labelset
+       eighty_one_label = labelset[x][:-2].reshape(9, 9)
+       transformed_label = function_name(eighty_one_label).reshape(81)
+       pass_resign_label = [labelset[x][81], labelset[x][82]]
+       transformed_labelsets.append(np.concatenate((transformed_label, pass_resign_label)))
+
+   # Convert lists back to numpy arrays and concatenate
+   transformed_datasets = np.array(transformed_datasets)
+   transformed_labelsets = np.array(transformed_labelsets)
+   
+   dataset = np.concatenate((dataset, transformed_datasets))
+   labelset = np.concatenate((labelset, transformed_labelsets))
+
+   return dataset, labelset
+
+
 
 def pickleFiles(features, labels):
     
@@ -200,11 +196,9 @@ def parseNoResignation(sgfdata) :
             
     gameEndedByTime = False
     gameEndedInResignation = False
-    
     try:
-        r = re.search(r'RE\[(.+?)\]',sgfdata)
-        result = r.group(1)
-        
+        result = SGF.parse(sgfdata).get_property('RE')
+
         if (result == 'W+R'):
             #Shouldn't get here in these types of sgfs
             print("******** WHITE RESIGNED *******")
@@ -215,11 +209,10 @@ def parseNoResignation(sgfdata) :
             print("******** GAME ENDED BY TIME ********")
             gameEndedByTime = True
         else:
-           # print "result: ", result
             # Result found so game did not end in resignation
             gameEndedInResignation = False
     except:
-       # print "result not found"
+        print("result not found")
         gameEndedInResignation = True
         
 
@@ -250,9 +243,8 @@ def parseResignation(sgfdata) :
         gameEndedByTime = False
         blackWinByResignation = False
         whiteWinByResignation = False
-        
-        r = re.search(r'RE\[(.+?)\]',sgfdata)
-        result = r.group(1)
+       
+        result = SGF.parse(sgfdata) 
                        
         if (result == 'W+R'):
             whiteWinByResignation = True
@@ -266,7 +258,7 @@ def parseResignation(sgfdata) :
             blackWinByResignation = False
             whiteWinByResignation = False
     except:
-     #   print "Results not found for file. "
+        print("Results not found for file")
         gameEndedByTime = True
 
     return gameEndedByTime, blackWinByResignation, whiteWinByResignation
@@ -347,10 +339,11 @@ def parseMoves(nfile, labels, features, parseType) :
             thisMoveColor = 'B'
             previousMoveColor = 'W'
             try:
-                r = re.search(r'HA\[(.+?)\]',sgfdata)
-                handicap = r.group(1)
+                handicap_text = SGF.parse(sgfdata).get_property('HA')
+                match = re.search(r'HA\[(\d+)\]', handicap_text)
+                    
+                handicap = int(match.group(1))
                         
-                handicap = int(handicap)
                # print "handicap game found: ", str(handicap), " ", nfile
                 handicapFound += 1
                 if (handicap > 1):
@@ -508,8 +501,6 @@ def parseMoves(nfile, labels, features, parseType) :
         raise e
     
 def loadFiles(pathName, parseType, rankingSystem):
-
-    
     sgfFiles = glob.glob(pathName + "*.sgf")
 
     for file in sgfFiles:
@@ -521,21 +512,13 @@ def loadFiles(pathName, parseType, rankingSystem):
                os.rename(file, pathName + "too_small/" + filename)
                continue
            try:
-               with open(file, 'r') as src:
-    
-                   sgfdata = src.read()
-
-                   matchSize = re.search(r'SZ\[([0-9]+?)\]',sgfdata)
-                   if matchSize:
-                       size = matchSize.group(1)
-
-                       if (size == '9'):
-                           os.rename(file, pathName + "nine/" + filename)
-                       else:
-                           os.rename(file, pathName + "other/" + filename)
-                   else:
-                       raise
-
+                parsed_file = SGF.parse_file(file) 
+                
+                match_size = parsed_file.get_property('SZ')
+                if match_size == '9':
+                    os.rename(file, pathName + "nine/" + filename)
+                else:
+                    os.rename(file, pathName + "other/" + filename)
            except Exception as e:
                 os.rename(file, pathName + "error/" + filename)       
                 print('Error in figuring out board size: ', file, e)
@@ -584,7 +567,6 @@ def loadFiles(pathName, parseType, rankingSystem):
                                os.rename(file, pathName + "nine/nine_strong/" + filename)
                            else:
                                os.rename(file,  pathName + "nine/nine_weak/" + filename)
-                       else: 
                             
                            #Ranking is KYU / DAN / PRO system
                            rankText = re.search(r"BR\[([0-9]*)([kdpKDP])\]*", sgfdata)
@@ -612,13 +594,10 @@ def loadFiles(pathName, parseType, rankingSystem):
                            else:
                                os.rename(file,  pathName + "nine/nine_weak/" + filename)
         
-                           
                except Exception as e:  
                     print('Error processing player rankings: ', file, " ",  e)
                     os.rename(file, pathName + "error/" + filename) 
-             
-                    
-    
+                        
         print("Weak 9x9 games found: ", countFiles(pathName + "nine/nine_weak"))
         print("Strong 9x9 games found: ",  countFiles(pathName + "nine/nine_strong"))
         print("Error count after determining rank: ", countFiles(pathName + "error/"))
