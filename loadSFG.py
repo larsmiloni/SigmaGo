@@ -5,6 +5,7 @@ import copy
 import pickle
 import timeit
 import os
+from pysgf import SGF
 
 cwd = os.getcwd()
 path = cwd + '/data'
@@ -20,11 +21,6 @@ os.mkdir('trainResults')
 
 globalCount = 1  # Number of pickle files needed
 print("globalCount: ", globalCount)
-
-
-def getProperty(header, property):
-    m = re.search(r""+property+"\[(.*?)\]", header)
-    return (m.group(1))
 
 
 def removeDeadStones(feature):
@@ -526,17 +522,12 @@ def loadFiles(pathName, parseType, rankingSystem):
                 os.rename(file, pathName + "too_small/" + filename)
                 continue
             try:
-                with open(file, 'r') as src:
-                    sgfdata = src.read()
-                    matchSize = re.search(r'SZ\[([0-9]+?)\]', sgfdata)
-                    if matchSize:
-                        size = matchSize.group(1)
-                        if (size == '9'):
-                            os.rename(file, pathName + "nine/" + filename)
-                        else:
-                            os.rename(file, pathName + "other/" + filename)
-                    else:
-                        raise
+                parsed_file = SGF.parse_file(file) 
+                match_size = parsed_file.get_property('SZ')
+                if match_size == '9':
+                    os.rename(file, pathName + "nine/" + filename)
+                else:
+                    os.rename(file, pathName + "other/" + filename)
             except Exception as e:
                 os.rename(file, pathName + "error/" + filename)
                 print('Error in figuring out board size: ', file, e)
@@ -556,68 +547,38 @@ def loadFiles(pathName, parseType, rankingSystem):
             if file.endswith(".sgf"):
                 filename = os.path.basename(file)
                 try:
-                    with open(file, 'r') as src:
+                    parsed_data = SGF.parse_file(file)
+                    pattern = r"\((\d+)\)"
+                    w_rank_text = parsed_data.get_property('PB')
+                    b_rank_text = parsed_data.get_property('PW')
 
-                        sgfdata = src.read()
+                    if rankingSystem == 'ELO':
+                        # Select games where players are 1 kyu or better (2000 ELO ranking)
+                        b_rank = int(re.search(pattern, b_rank_text).group(1))
+                        w_rank = int(re.search(pattern, w_rank_text).group(1))
 
-                        if (rankingSystem == "ELO"):
-                            # Select games where players are 1 kyu or better (2000 ELO ranking)
-
-                            rankText = re.search(
-                                r"PB\[.*?\((.*?)\)\]", sgfdata)
-                            bRank = rankText.group(1)
-                            bRank = int(bRank)
-
-                            rankText = re.search(
-                                r"PW\[.*?\((.*?)\)\]", sgfdata)
-                            wRank = rankText.group(1)
-                            wRank = int(wRank)
-
-                            bOK = False
-                            wOK = False
-
-                            if (bRank >= 2000):  # equivalent of 1 kyu
-                                bOK = True
-
-                            if (wRank >= 2000):
-                                wOK = True
-
-                            if (bOK and wOK):
-                                os.rename(file, pathName +
-                                          "nine/nine_strong/" + filename)
-                            else:
-                                os.rename(file,  pathName +
-                                          "nine/nine_weak/" + filename)
+                        if b_rank >= 2000 and w_rank >= 2000:
+                            os.rename(file, pathName +
+                                      "nine/nine_strong/" + filename)
                         else:
-                            # Ranking is KYU / DAN / PRO system
-                            rankText = re.search(
-                                r"BR\[([0-9]*)([kdpKDP])\]*", sgfdata)
-                            bRank = rankText.group(1)
-                            bKyuDan = rankText.group(2)
+                            os.rename(file,  pathName +
+                                      "nine/nine_weak/" + filename)
+                    else:
+                        # Ranking is KYU / DAN / PRO system
+                        b_kyu_dan = re.search(
+                            r"BR\[([0-9]*)([kdpKDP])\]*", b_rank_text).group(2)
 
-                            rankText = re.search(
-                                r"WR\[([0-9]*)([kdpKDP])\]*", sgfdata)
-                            wRank = rankText.group(1)
-                            wKyuDan = rankText.group(2)
+                        w_kyu_dan = re.search(
+                            r"WR\[([0-9]*)([kdpKDP])\]*", w_rank_text).group(2)
 
-                            bRank = int(bRank)
-                            wRank = int(wRank)
+                        sufficient_ranks = {'d', 'D', 'p', 'P'}
 
-                            bOK = False
-                            wOK = False
-
-                            if (bKyuDan == 'd' or bKyuDan == 'D' or bKyuDan == 'P' or bKyuDan == 'p' or bRank <= 5):
-                                bOK = True
-
-                            if (wKyuDan == 'd' or wKyuDan == 'D' or wKyuDan == 'P' or wKyuDan == 'p' or wRank <= 5):
-                                wOK = True
-
-                            if (bOK and wOK):
-                                os.rename(file, pathName +
-                                          "nine/nine_strong/" + filename)
-                            else:
-                                os.rename(file,  pathName +
-                                          "nine/nine_weak/" + filename)
+                        if w_kyu_dan in sufficient_ranks and b_kyu_dan in sufficient_ranks:
+                            os.rename(file, pathName +
+                                      "nine/nine_strong/" + filename)
+                        else:
+                            os.rename(file,  pathName +
+                                      "nine/nine_weak/" + filename)
 
                 except Exception as e:
                     print('Error processing player rankings: ', file, " ",  e)
