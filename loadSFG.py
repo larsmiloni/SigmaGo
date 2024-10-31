@@ -5,7 +5,6 @@ import copy
 import pickle
 import timeit
 import os
-from pysgf import SGF
 
 cwd = os.getcwd()
 path = cwd + '/data'
@@ -197,7 +196,8 @@ def parseNoResignation(sgfdata) :
     gameEndedByTime = False
     gameEndedInResignation = False
     try:
-        result = SGF.parse(sgfdata).get_property('RE')
+        r = re.search(r'RE\[(.+?)\]',sgfdata)
+        result = r.group(1)
 
         if (result == 'W+R'):
             #Shouldn't get here in these types of sgfs
@@ -212,7 +212,7 @@ def parseNoResignation(sgfdata) :
             # Result found so game did not end in resignation
             gameEndedInResignation = False
     except:
-        print("result not found")
+        # print("result not found")
         gameEndedInResignation = True
         
 
@@ -244,7 +244,8 @@ def parseResignation(sgfdata) :
         blackWinByResignation = False
         whiteWinByResignation = False
        
-        result = SGF.parse(sgfdata) 
+        r = re.search(r'RE\[(.+?)\]',sgfdata)
+        result = r.group(1)
                        
         if (result == 'W+R'):
             whiteWinByResignation = True
@@ -339,10 +340,10 @@ def parseMoves(nfile, labels, features, parseType) :
             thisMoveColor = 'B'
             previousMoveColor = 'W'
             try:
-                handicap_text = SGF.parse(sgfdata).get_property('HA')
-                match = re.search(r'HA\[(\d+)\]', handicap_text)
-                    
-                handicap = int(match.group(1))
+                r = re.search(r'HA\[(.+?)\]',sgfdata)
+                handicap = r.group(1)
+
+                handicap = int(handicap)
                         
                # print "handicap game found: ", str(handicap), " ", nfile
                 handicapFound += 1
@@ -506,24 +507,27 @@ def loadFiles(pathName, parseType, rankingSystem):
     for file in sgfFiles:
     
         if file.endswith(".sgf"):
-           filename = os.path.basename(file)       
-           filesize = os.path.getsize(file)
-           if filesize < 180:
-               os.rename(file, pathName + "too_small/" + filename)
-               continue
-           try:
-                parsed_file = SGF.parse_file(file) 
-                
-                match_size = parsed_file.get_property('SZ')
-                if match_size == '9':
-                    os.rename(file, pathName + "nine/" + filename)
-                else:
-                    os.rename(file, pathName + "other/" + filename)
-           except Exception as e:
-                os.rename(file, pathName + "error/" + filename)       
-                print('Error in figuring out board size: ', file, e)
-    
-          
+                filename = os.path.basename(file)       
+                filesize = os.path.getsize(file)
+                if filesize < 180:
+                   os.rename(file, pathName + "too_small/" + filename)
+                   continue
+                try:
+                    with open(file, 'r') as src:
+                        sgfdata = src.read()
+                        matchSize = re.search(r'SZ\[([0-9]+?)\]',sgfdata)
+                        if matchSize:
+                            size = matchSize.group(1)
+                            if (size == '9'):
+                                os.rename(file, pathName + "nine/" + filename)
+                            else:
+                                os.rename(file, pathName + "other/" + filename)
+                        else:
+                           raise
+                except Exception as e:
+                    os.rename(file, pathName + "error/" + filename)       
+                    print('Error in figuring out board size: ', file, e)
+                    
     print("File count for loading files from data path: ", pathName)
     print("9x9: ", countFiles(pathName + "nine/"))
     print("other: ", countFiles(pathName + "other/"))
@@ -567,7 +571,7 @@ def loadFiles(pathName, parseType, rankingSystem):
                                os.rename(file, pathName + "nine/nine_strong/" + filename)
                            else:
                                os.rename(file,  pathName + "nine/nine_weak/" + filename)
-                            
+                       else:    
                            #Ranking is KYU / DAN / PRO system
                            rankText = re.search(r"BR\[([0-9]*)([kdpKDP])\]*", sgfdata)
                            bRank = rankText.group(1)
