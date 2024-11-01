@@ -9,7 +9,8 @@ class GoGame:
         self.turn = 1  # 1 for black, 2 for white
 
         self.history = []  # To track past board states (for Ko rules)
-
+        self.consecutivePasses = 0
+        
     def reset(self):
         self.board = np.zeros((self.size, self.size), dtype=int)
         self.turn = 1
