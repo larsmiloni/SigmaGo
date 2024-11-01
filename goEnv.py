@@ -164,6 +164,99 @@ class GoGame:
 
     def is_game_over(self):
         return False
+    
+
+    def get_score(self):
+        # Count stones on the board for each player
+        black_stones, white_stones = self.count_stones()
+
+        # Initialize territory counts
+        black_territory = 0
+        white_territory = 0
+
+        # Track dead stones for each color to assign territory
+        dead_black_stones = set()
+        dead_white_stones = set()
+
+        # Identify dead stones for each player
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.board[i, j] == 1 and self.is_dead((i, j)):
+                    dead_black_stones.update(self.get_group((i, j)))
+                elif self.board[i, j] == 2 and self.is_dead((i, j)):
+                    dead_white_stones.update(self.get_group((i, j)))
+
+        # Adjust stone count by excluding dead stones
+        black_stones -= len(dead_black_stones)
+        white_stones -= len(dead_white_stones)
+
+        # Count territory, adding dead stone positions to opponent's territory
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.board[i, j] == 0:  # Check empty spaces only
+                    territory_owner = self.determine_territory_owner((i, j), dead_black_stones, dead_white_stones)
+                    
+                    if territory_owner == 1:
+                        black_territory += 1
+                    elif territory_owner == 2:
+                        white_territory += 1
+
+        # Add dead stones as territory to the opponent
+        black_territory += len(dead_white_stones)
+        white_territory += len(dead_black_stones)
+
+        # Total score for each player (stones + territory)
+        black_score = black_stones + black_territory
+        white_score = white_stones + white_territory
+
+        return black_score, white_score
+
+    def is_dead(self, point):
+        """Determine if a group of stones at the given point is dead (no eyes)."""
+        group = self.get_group(point)
+        liberties = set()
+        for x, y in group:
+            for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
+                if 0 <= nx < self.size and 0 <= ny < self.size:
+                    if self.board[nx, ny] == 0:
+                        liberties.add((nx, ny))
+        # Group is considered dead if it has fewer than 2 distinct liberties (no "two eyes")
+        return len(liberties) < 2
+
+    def determine_territory_owner(self, point, dead_black_stones, dead_white_stones):
+        """Determine which player, if any, fully surrounds an empty point,
+        while accounting for dead stones that don't count as territory."""
+        x, y = point
+        visited = set()
+        boundary_colors = set()
+
+        def dfs(px, py):
+            if (px, py) in visited:
+                return
+            if not (0 <= px < self.size and 0 <= py < self.size):
+                return
+
+            visited.add((px, py))
+
+            if self.board[px, py] == 0:
+                # Continue exploring if the point is empty
+                for nx, ny in [(px-1, py), (px+1, py), (px, py-1), (px, py+1)]:
+                    dfs(nx, ny)
+            elif (px, py) not in dead_black_stones and (px, py) not in dead_white_stones:
+                # Record the color of adjacent alive stones
+                boundary_colors.add(self.board[px, py])
+
+        # Start the DFS from the empty point
+        dfs(x, y)
+
+        # Determine if the empty area is controlled by only one color
+        if len(boundary_colors) == 1:
+            return boundary_colors.pop()  # Either 1 for black or 2 for white
+        return 0  # Neutral territory if surrounded by both or open boundaries
+
+
+
+
 
     def render_in_terminal(self):
         print("  0 1 2 3 4 5 6")
@@ -202,3 +295,35 @@ if game_over:
     game.reset()
 game.render_in_terminal()
 """
+
+
+game = GoGame(size=7)
+game.reset()
+
+game.step((1, 0))
+game.step((5, 0))
+
+game.step((1, 1))
+game.step((5, 1))
+
+game.step((1, 2))
+game.step((5, 2))
+
+game.step((1, 3))
+game.step((5, 3))
+
+game.step((1, 4))
+game.step((5, 4))
+
+game.step((1, 5))
+game.step((5, 5))
+
+game.step((1, 6))
+game.step((6, 5))
+
+game.step((0, 2))
+game.step((0, 6))
+
+game.render_in_terminal()
+bs, ws = game.get_score()
+print("B: ", bs, " W: ", ws)
