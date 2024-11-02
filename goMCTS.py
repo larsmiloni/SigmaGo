@@ -175,8 +175,9 @@ class MCTS:
     
     def evaluate_terminal(self, game_state: GoGame) -> int:
         """Evaluate terminal game state."""
-        black_stones, white_stones = game_state.count_stones()
-        return 1 if black_stones > white_stones else -1
+        winner = game_state.determine_winner()
+    
+        return 1 if winner == "black" else -1
     
     def evaluate_position(self, game_state: GoGame) -> float:
         """Evaluate non-terminal position using network prediction."""
