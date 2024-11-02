@@ -12,7 +12,7 @@ import os
 import glob
 
 cwd = os.getcwd()
-pickleRoot = os.path.join(cwd, 'pickles2')
+pickleRoot = os.path.join(cwd, 'pickles')
 mixedPickleRoot = os.path.join(cwd, 'pickles_mixed')
 checkpointFile = os.path.join(cwd, 'checkpoints/model.keras')
 csvFile = os.path.join(cwd, 'trainResults/trainResults.csv')
