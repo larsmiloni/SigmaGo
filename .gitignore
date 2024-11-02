@@ -5,3 +5,5 @@ pickles/
 pickles_mixed/
 trainResults/
 checkpoints/
+dataset_memmap.npy
+labelset_memmap.npy
