@@ -57,7 +57,10 @@ class GoGameGUI:
 
         self.myfont = pygame.font.SysFont("monospace", 15)
         black_score, white_score = self.game.get_score()
-        score_text = f"Black: {black_score}, White: {white_score}"
+
+        winner = self.game.determine_winner()
+
+        score_text = f"Winner: {winner}"
         self.label = self.myfont.render(score_text, 1, (0, 0, 0))
         self.screen.blit(self.label, (80, 300))
 
@@ -108,7 +111,7 @@ class GoGameGUI:
 
 if __name__ == "__main__":
     pygame.init()
-    game = GoGame(size=5)
+    game = GoGame(size=9)
     gui = GoGameGUI(game)
     gui.run()
     pygame.quit()
