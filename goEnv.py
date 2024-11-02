@@ -165,6 +165,141 @@ class GoGame:
 
     def is_game_over(self):
         return False
+    
+
+    def determine_winner(self):
+        # Count stones on the board for each player
+        black_stones, white_stones = self.count_stones()
+
+        # Track dead stones for each color
+        dead_black_stones = set()
+        dead_white_stones = set()
+
+        # Identify dead stones for each player
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.board[i, j] == 1 and self.is_dead((i, j)):
+                    dead_black_stones.update(self.get_group((i, j)))
+                elif self.board[i, j] == 2 and self.is_dead((i, j)):
+                    dead_white_stones.update(self.get_group((i, j)))
+
+        # Adjust stone count by excluding dead stones
+        black_stones -= len(dead_black_stones)
+        white_stones -= len(dead_white_stones)
+
+        # Initialize territory counts
+        black_territory = 0
+        white_territory = 0
+        visited = set()
+
+        def bfs_territory(start):
+            queue = [start]
+            territory = set()
+            boundary_colors = set()
+
+            while queue:
+                x, y = queue.pop(0)
+                if (x, y) in visited:
+                    continue
+                visited.add((x, y))
+                territory.add((x, y))
+
+                for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
+                    if 0 <= nx < self.size and 0 <= ny < self.size:
+                        if self.board[nx, ny] == 0 and (nx, ny) not in visited:
+                            queue.append((nx, ny))
+                        elif self.board[nx, ny] in (1, 2):
+                            boundary_colors.add(self.board[nx, ny])
+
+            # Determine ownership if surrounded by one color
+            if len(boundary_colors) == 1:
+                owner = boundary_colors.pop()
+                if owner == 1:
+                    return len(territory), "black"
+                elif owner == 2:
+                    return len(territory), "white"
+            return 0, "neutral"
+
+        # Traverse all empty points to calculate territory ownership
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.board[i, j] == 0 and (i, j) not in visited:
+                    territory_count, owner = bfs_territory((i, j))
+                    if owner == "black":
+                        black_territory += territory_count
+                    elif owner == "white":
+                        white_territory += territory_count
+
+        # Add dead stones to the opponent's territory count
+        black_territory += len(dead_white_stones)
+        white_territory += len(dead_black_stones)
+
+        # Total score for determining winner
+        black_total = black_stones + black_territory
+        white_total = white_stones + white_territory + 7.5
+
+        # Determine the winner based on higher score
+        if black_total > white_total:
+            return "black"
+        elif white_total > black_total:
+            return "white"
+
+    def is_dead(self, point):
+        """Determine if a group of stones at the given point is dead (cannot form two eyes)."""
+        group = self.get_group(point)
+        liberties = set()
+        
+        # Find all liberties of the group
+        for x, y in group:
+            for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
+                if 0 <= nx < self.size and 0 <= ny < self.size and self.board[nx, ny] == 0:
+                    liberties.add((nx, ny))
+        
+        # A group with fewer than two liberties is almost certainly dead
+        if len(liberties) < 2:
+            return True
+
+        # Check if there are at least two separate eye-like regions among liberties
+        potential_eyes = []
+        visited = set()
+
+        def is_eye(liberty):
+            """Determine if a given liberty point can be an eye."""
+            lx, ly = liberty
+            eye_border_color = self.board[point[0], point[1]]
+            
+            for nx, ny in [(lx-1, ly), (lx+1, ly), (lx, ly-1), (lx, ly+1)]:
+                if 0 <= nx < self.size and 0 <= ny < self.size:
+                    if self.board[nx, ny] != eye_border_color and self.board[nx, ny] != 0:
+                        return False
+            return True
+
+        # Group the liberties into potential eyes
+        for liberty in liberties:
+            if liberty not in visited and is_eye(liberty):
+                # Find the connected region for this liberty to consider it as a potential eye
+                eye_region = set()
+                stack = [liberty]
+
+                while stack:
+                    lx, ly = stack.pop()
+                    if (lx, ly) in visited:
+                        continue
+                    visited.add((lx, ly))
+                    eye_region.add((lx, ly))
+
+                    # Explore adjacent liberties to expand the eye region
+                    for nx, ny in [(lx-1, ly), (lx+1, ly), (lx, ly-1), (lx, ly+1)]:
+                        if (nx, ny) in liberties and (nx, ny) not in visited and is_eye((nx, ny)):
+                            stack.append((nx, ny))
+
+                # Add the identified eye region if it's distinct
+                if eye_region:
+                    potential_eyes.append(eye_region)
+
+        # A group is alive if it has at least two distinct eyes
+        return len(potential_eyes) < 2
+    
 
     def render_in_terminal(self):
         print("  0 1 2 3 4 5 6")
@@ -173,6 +308,29 @@ class GoGame:
             row_print += '─'.join(['┼' if cell == 0
                                    else ('○' if cell == 1 else '●') for cell in row])
             print(row_print)
+
+
+    def sgf_to_coordinates(self, sgf_moves):
+        """
+        Convert SGF move notation to a list of (row, col) coordinates.
+        """
+        moves = []
+        for entry in sgf_moves.split(';'):
+            if not entry:
+                continue
+            # Determine player and move
+            player = entry[0]  # 'B' for Black or 'W' for White
+            move = entry[2:4]  # Get the two-letter move, e.g., 'fe'
+            
+            # Convert letters to board coordinates
+            row = ord(move[0]) - ord('a')  # Vertical position (y-coordinate)
+            col = ord(move[1]) - ord('a')  # Horizontal position (x-coordinate)
+            
+            # Append to moves list as (player, (row, col))
+            moves.append((row, col))
+        
+        return moves
+
 
 
 """
@@ -202,4 +360,59 @@ _, _, game_over = game.step(("pass"))
 if game_over:
     game.reset()
 game.render_in_terminal()
+"""
+
+
+
+game = GoGame(size=9)
+game.reset()
+
+# Example SGF moves string
+sgf_moves = ";B[fe];W[de];B[dd];W[cd];B[dc];W[ee];B[fd];W[ff];B[gf];W[ed];B[ec];W[ef];B[ce];W[cc];B[cb];W[bb];B[db];W[be];B[cf];W[gg];B[bf];W[bc];B[ae];W[ad];B[bd];W[fc];B[gc];W[fb];B[gb];W[cg];B[ac];W[hf];B[ge];W[he];B[gd];W[dg];B[hd];W[bg];B[ba];W[ag];B[ie];W[hg];B[if];W[ig];B[id];W[af];B[ab];W[df]"
+
+# Convert SGF to list of moves
+moves = game.sgf_to_coordinates(sgf_moves)
+
+# Print the moves in (player, (row, col)) format
+for move in moves:
+    game.step(move)
+    print(move)
+
+game.render_in_terminal()
+winner = game.determine_winner()
+print("Winner: ", winner)
+
+
+
+"""
+game.step((1, 0))
+game.step((5, 0))
+
+game.step((1, 1))
+game.step((5, 1))
+
+game.step((1, 2))
+game.step((5, 2))
+
+game.step((1, 3))
+game.step((5, 3))
+
+game.step((1, 4))
+game.step((5, 4))
+
+game.step((1, 5))
+game.step((5, 5))
+
+game.step((1, 6))
+game.step((6, 5))
+
+game.step((0, 2))
+game.step((0, 6))
+
+game.step((6, 0))
+game.step((0, 5))
+
+game.render_in_terminal()
+winner = game.determine_winner()
+print("Winner: ", winner)
 """
