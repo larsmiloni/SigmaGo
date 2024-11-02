@@ -19,10 +19,6 @@ os.mkdir('pickles_mixed')
 os.mkdir('checkpoints')
 os.mkdir('trainResults')
 
-globalCount = 1  # Number of pickle files needed
-print("globalCount: ", globalCount)
-
-
 def removeDeadStones(feature):
 
     # Board is flipped before coming in here
@@ -153,20 +149,20 @@ def transform_data(function_name, dataset, labelset, dataset_file="dataset_memma
 
 def pickleFiles(features, labels):
 
-    pickleFileCount = int(len(features)/1500000 + 1)
+    pickleFileCount = int(len(features) / 1_500_000)
     print("Number of pickle files needed for this sub dataset = ", pickleFileCount)
 
-    # TODO: Fix the range 
+    range = len(features) / pickleFileCount
     for i in range(pickleFileCount):
         try:
-            global globalCount
-            range = len(features) / pickleFileCount
             startRange = i * range
-            stopRange = startRange + range
+            if i == pickleFileCount - 1:
+                stopRange = startRange + len(features) % 1_500_000
+            else:
+                stopRange = startRange + range
             print("startRange: ", startRange, " stopRange: ", stopRange)
-            print("pickling file: ", str(globalCount))
-            pickle_file = pickleRoot + str(globalCount) + '.pickle'
-            globalCount += 1
+            print("pickling file: ", str(i + 1))
+            pickle_file = pickleRoot + str(i + 1) + '.pickle'
             f = open(pickle_file, 'wb')
             save = {
                 'dataset': features[startRange:stopRange],
