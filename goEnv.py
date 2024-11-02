@@ -10,6 +10,7 @@ class GoGame:
 
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
+        self.isGameOver = False
 
         self.winner = 0
         
@@ -27,6 +28,7 @@ class GoGame:
         if action == "resign":
             print("resignation from:", self.turn)
             self.winner = 3 - self.turn
+            self.isGameOver = True
             return self.board, 0, True
 
         if action == "pass":
@@ -36,6 +38,7 @@ class GoGame:
 
             if self.consecutivePasses == 2:
                 print("Game is over")
+                self.isGameOver = True
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
