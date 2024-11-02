@@ -10,6 +10,8 @@ class GoGame:
 
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
+
+        self.winner = 0
         
     def reset(self):
         self.board = np.zeros((self.size, self.size), dtype=int)
@@ -21,6 +23,11 @@ class GoGame:
     def step(self, action):
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
+
+        if action == "resign":
+            print("resignation from:", self.turn)
+            self.winner = 3 - self.turn
+            return self.board, 0, True
 
         if action == "pass":
             print("pass")
@@ -68,6 +75,7 @@ class GoGame:
 
         # Add the pass action as a legal move
         legal_moves.append("pass")
+        legal_moves.append("resign")
         return legal_moves
 
     """Check that move does not repeat a previous board instance."""
@@ -198,11 +206,15 @@ class GoGame:
         black_score = black_stones + black_territory
         white_score = white_stones + white_territory
 
+
         if black_score > white_score:
+            self.winner = 2
             return "Black wins", black_score, white_score
         elif white_score > black_score:
+            self.winner = 1
             return "White wins", black_score, white_score
         else:
+            self.winner = 0
             return "Draw", black_score, white_score
 
     def count_territories(self):
@@ -364,9 +376,11 @@ game.step((0, 6))
 
 game.step((6, 0))
 game.step((0, 5))
-
+"""
 _, _, game_over = game.step("pass")
 _, _, game_over = game.step("pass")
+"""
+_, _, game_over = game.step("resign")
 
 print("game over: ", game_over)
 
