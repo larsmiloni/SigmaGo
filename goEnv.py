@@ -42,7 +42,7 @@ class GoGame:
         self.history.append(self.board.copy())
         self.turn = 3 - self.turn  # Switch turns
         # Reward is number of captured stones
-        return self.board, len(captured_stones), self.is_game_over()
+        return self.board, len(captured_stones), False
 
     """Get all legal moves on the board. Pass is always a legal move."""
 
@@ -162,143 +162,95 @@ class GoGame:
         white_stones = sum(1 for i in range(self.size)
                            for j in range(self.size) if self.board[i, j] == 2)
         return black_stones, white_stones
-
-    def is_game_over(self):
-        return False
     
 
-    def determine_winner(self):
-        # Count stones on the board for each player
-        black_stones, white_stones = self.count_stones()
+    def find_dead_stones(self):
+        """Identify groups with no liberties, marking them as dead."""
+        black_dead, white_dead = set(), set()
 
-        # Track dead stones for each color
-        dead_black_stones = set()
-        dead_white_stones = set()
-
-        # Identify dead stones for each player
         for i in range(self.size):
             for j in range(self.size):
-                if self.board[i, j] == 1 and self.is_dead((i, j)):
-                    dead_black_stones.update(self.get_group((i, j)))
-                elif self.board[i, j] == 2 and self.is_dead((i, j)):
-                    dead_white_stones.update(self.get_group((i, j)))
+                if self.board[i, j] in (1, 2):  # Only check stones
+                    group = self.get_group((i, j))
+                    if not any(self.hasLiberties(stone) for stone in group):
+                        if self.board[i, j] == 1:
+                            black_dead.update(group)
+                        else:
+                            white_dead.update(group)
 
-        # Adjust stone count by excluding dead stones
-        black_stones -= len(dead_black_stones)
-        white_stones -= len(dead_white_stones)
+        return black_dead, white_dead
 
-        # Initialize territory counts
+    def determine_winner(self):
+        """Determine winner considering dead stones."""
+        black_stones, white_stones = self.count_stones()
+        
+        # Identify dead stones
+        black_dead, white_dead = self.find_dead_stones()
+        
+        # Adjust counts to exclude dead stones
+        black_stones -= len(black_dead)
+        white_stones -= len(white_dead)
+
+        # Calculate territory for black and white
+        black_territory, white_territory = self.count_territories()
+
+        # Total score calculation
+        black_score = black_stones + black_territory
+        white_score = white_stones + white_territory
+
+        if black_score > white_score:
+            return "Black wins", black_score, white_score
+        elif white_score > black_score:
+            return "White wins", black_score, white_score
+        else:
+            return "Draw", black_score, white_score
+
+    def count_territories(self):
+        visited = set()
         black_territory = 0
         white_territory = 0
-        visited = set()
 
-        def bfs_territory(start):
-            queue = [start]
-            territory = set()
-            boundary_colors = set()
-
-            while queue:
-                x, y = queue.pop(0)
-                if (x, y) in visited:
-                    continue
-                visited.add((x, y))
-                territory.add((x, y))
-
-                for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-                    if 0 <= nx < self.size and 0 <= ny < self.size:
-                        if self.board[nx, ny] == 0 and (nx, ny) not in visited:
-                            queue.append((nx, ny))
-                        elif self.board[nx, ny] in (1, 2):
-                            boundary_colors.add(self.board[nx, ny])
-
-            # Determine ownership if surrounded by one color
-            if len(boundary_colors) == 1:
-                owner = boundary_colors.pop()
-                if owner == 1:
-                    return len(territory), "black"
-                elif owner == 2:
-                    return len(territory), "white"
-            return 0, "neutral"
-
-        # Traverse all empty points to calculate territory ownership
         for i in range(self.size):
             for j in range(self.size):
                 if self.board[i, j] == 0 and (i, j) not in visited:
-                    territory_count, owner = bfs_territory((i, j))
-                    if owner == "black":
-                        black_territory += territory_count
-                    elif owner == "white":
-                        white_territory += territory_count
+                    empty_group, border_colors = self.get_empty_group_and_borders((i, j))
+                    visited.update(empty_group)
 
-        # Add dead stones to the opponent's territory count
-        black_territory += len(dead_white_stones)
-        white_territory += len(dead_black_stones)
+                    # If the empty area is bordered by only one color, count it as territory
+                    if len(border_colors) == 1:
+                        if 1 in border_colors:
+                            black_territory += len(empty_group)
+                        elif 2 in border_colors:
+                            white_territory += len(empty_group)
 
-        # Total score for determining winner
-        black_total = black_stones + black_territory
-        white_total = white_stones + white_territory + 7.5
+        return black_territory, white_territory
 
-        # Determine the winner based on higher score
-        if black_total > white_total:
-            return "black"
-        elif white_total > black_total:
-            return "white"
-
-    def is_dead(self, point):
-        """Determine if a group of stones at the given point is dead (cannot form two eyes)."""
-        group = self.get_group(point)
-        liberties = set()
-        
-        # Find all liberties of the group
-        for x, y in group:
-            for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-                if 0 <= nx < self.size and 0 <= ny < self.size and self.board[nx, ny] == 0:
-                    liberties.add((nx, ny))
-        
-        # A group with fewer than two liberties is almost certainly dead
-        if len(liberties) < 2:
-            return True
-
-        # Check if there are at least two separate eye-like regions among liberties
-        potential_eyes = []
+    def get_empty_group_and_borders(self, intersection):
+        x, y = intersection
         visited = set()
+        empty_group = []
+        border_colors = set()
 
-        def is_eye(liberty):
-            """Determine if a given liberty point can be an eye."""
-            lx, ly = liberty
-            eye_border_color = self.board[point[0], point[1]]
-            
-            for nx, ny in [(lx-1, ly), (lx+1, ly), (lx, ly-1), (lx, ly+1)]:
-                if 0 <= nx < self.size and 0 <= ny < self.size:
-                    if self.board[nx, ny] != eye_border_color and self.board[nx, ny] != 0:
-                        return False
-            return True
+        def dfs(px, py):
+            if (px, py) in visited:
+                return
+            if not (0 <= px < self.size and 0 <= py < self.size):
+                return
 
-        # Group the liberties into potential eyes
-        for liberty in liberties:
-            if liberty not in visited and is_eye(liberty):
-                # Find the connected region for this liberty to consider it as a potential eye
-                eye_region = set()
-                stack = [liberty]
+            visited.add((px, py))
 
-                while stack:
-                    lx, ly = stack.pop()
-                    if (lx, ly) in visited:
-                        continue
-                    visited.add((lx, ly))
-                    eye_region.add((lx, ly))
+            if self.board[px, py] == 0:
+                empty_group.append((px, py))
 
-                    # Explore adjacent liberties to expand the eye region
-                    for nx, ny in [(lx-1, ly), (lx+1, ly), (lx, ly-1), (lx, ly+1)]:
-                        if (nx, ny) in liberties and (nx, ny) not in visited and is_eye((nx, ny)):
-                            stack.append((nx, ny))
+                # Explore all four directions
+                for nx, ny in [(px-1, py), (px+1, py), (px, py-1), (px, py+1)]:
+                    dfs(nx, ny)
+            else:
+                # Record border color if we reach a stone
+                border_colors.add(self.board[px, py])
 
-                # Add the identified eye region if it's distinct
-                if eye_region:
-                    potential_eyes.append(eye_region)
-
-        # A group is alive if it has at least two distinct eyes
-        return len(potential_eyes) < 2
+        dfs(x, y)
+        return empty_group, border_colors
     
 
     def render_in_terminal(self):
@@ -363,7 +315,7 @@ game.render_in_terminal()
 """
 
 
-
+"""
 game = GoGame(size=9)
 game.reset()
 
@@ -382,10 +334,11 @@ game.render_in_terminal()
 winner = game.determine_winner()
 print("Winner: ", winner)
 
-
-
 """
-game.step((1, 0))
+
+game = GoGame(size=9)
+game.reset()
+
 game.step((5, 0))
 
 game.step((1, 1))
@@ -412,7 +365,11 @@ game.step((0, 6))
 game.step((6, 0))
 game.step((0, 5))
 
+_, _, game_over = game.step("pass")
+_, _, game_over = game.step("pass")
+
+print("game over: ", game_over)
+
 game.render_in_terminal()
 winner = game.determine_winner()
 print("Winner: ", winner)
-"""
