@@ -188,13 +188,13 @@ class MCTS:
             scratch_game = copy.deepcopy(game_state)
             
             # Selection - use UCB to select moves until reaching a leaf
-            while node.is_expanded and not scratch_game.is_game_over():
+            while node.is_expanded and not scratch_game.isGameOver:
                 move, node = node.select_child(self.c_puct)
                 if move != "pass":
                     scratch_game.step(move)
             
             # Expansion - add child nodes for all legal moves
-            if not node.is_expanded and not scratch_game.is_game_over():
+            if not node.is_expanded and not scratch_game.isGameOver:
                 policy = self.network.predict(scratch_game.board)
                 valid_moves = scratch_game.get_legal_actions()
                 
@@ -212,7 +212,7 @@ class MCTS:
                 node.is_expanded = True
             
             # Evaluation
-            value = (self.evaluate_terminal(scratch_game) if scratch_game.is_game_over() 
+            value = (self.evaluate_terminal(scratch_game) if scratch_game.isGameOver 
                     else self.evaluate_position(scratch_game))
             
             # Backup
@@ -259,7 +259,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         move_count = 0
         current_player = 'black'  # Track current player
         
-        while not game.is_game_over():
+        while not game.isGameOver:
             print(f"\nMove {move_count + 1} - {current_player}'s turn")
             current_state = copy.deepcopy(game.board)
             
@@ -282,7 +282,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
                 
                 # Print updated board
                 print("\nBoard after move:")
-                print_board_state(game.board, last_move=move)
+                print_board_state(game)
                 
                 # Switch players
                 current_player = 'white' if current_player == 'black' else 'black'
@@ -343,88 +343,12 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
         if batch_idx % 10 == 0:
             print(f"Batch {batch_idx}/{num_batches}, Loss: {loss:.4f}")
 
-def print_board_state(board_state, last_move=None):
-    """
-    Prints a text representation of the Go board with ASCII characters.
-    
-    Args:
-        board_state (np.ndarray): The current state of the board (9x9)
-        last_move (tuple): The coordinates of the last move played (optional)
-    """
-    # Reshape board if it's flattened
-    if len(board_state.shape) == 1:
-        board = board_state.reshape((9, 9))
-    else:
-        board = board_state
-        
-    # Board symbols
-    EMPTY = '.'
-    BLACK = '●'
-    WHITE = '○'
-    LAST_MOVE_BLACK = '⬤'
-    LAST_MOVE_WHITE = '◯'
-    
-    # Print column coordinates
-    print('\n   A B C D E F G H J')
-    print('   ─────────────────')
-    
-    # Print each row
-    for i in range(9):
-        row = f"{9-i} │"
-        for j in range(9):
-            if last_move and (i, j) == last_move:
-                if board[i, j] == 1:
-                    row += f" {LAST_MOVE_BLACK}"
-                elif board[i, j] == -1:
-                    row += f" {LAST_MOVE_WHITE}"
-            else:
-                if board[i, j] == 0:
-                    row += f" {EMPTY}"
-                elif board[i, j] == 1:
-                    row += f" {BLACK}"
-                elif board[i, j] == -1:
-                    row += f" {WHITE}"
-        row += f" │ {9-i}"
-        print(row)
-    
-    # Print bottom border
-    print('   ─────────────────')
-    print('   A B C D E F G H J\n')
+def print_board_state(game):
+    game.render_in_terminal()
 
 
-def visualize_board_state(board_state):
-        """
-        Visualizes the board state using matplotlib.
-        
-        Args:
-            board_state (np.ndarray): The Go board state, assumed to be a 9x9 grid.
-        """
-        board = board_state.reshape((9, 9))  # Reshape the board to 9x9
 
-        # Define the color mapping for empty spaces, black, and white pieces
-        color_map = {
-            0: 'lightgrey',  # Empty space
-            1: 'black',      # Black pieces
-            -1: 'white'      # White pieces
-        }
-
-        # Create a plot
-        fig, ax = plt.subplots()
-        for (x, y), value in np.ndenumerate(board):
-            ax.add_patch(plt.Rectangle((y, 8 - x), 1, 1, color=color_map.get(value, 'lightgrey')))
-
-        # Set grid limits
-        ax.set_xlim(0, 9)
-        ax.set_ylim(0, 9)
-        ax.set_xticks(np.arange(0, 9, 1))
-        ax.set_yticks(np.arange(0, 9, 1))
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        ax.grid(color="black")
-
-        plt.gca().invert_yaxis()
-        plt.show()
-
+       
 if __name__ == "__main__":
     # Load pre-trained network
     checkpoint_path = "models/model.keras"
