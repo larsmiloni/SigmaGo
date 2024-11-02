@@ -122,47 +122,47 @@ def randomize(dataset, labels):
     shuffled_labels = labels[permutation]
     return shuffled_dataset, shuffled_labels
 
+def transform_data(function_name, dataset, labelset, dataset_file="dataset_memmap.npy", labelset_file="labelset_memmap.npy"):
+    if len(dataset) > 0:
+        # Determine the shape of the expanded arrays
+        total_rows = 2 * len(dataset)
+        
+        # Create memory-mapped arrays on disk
+        expanded_dataset = np.memmap(dataset_file, dtype='float32', mode='w+', shape=(total_rows, 83))
+        expanded_labelset = np.memmap(labelset_file, dtype='float32', mode='w+', shape=(total_rows, 83))
 
-# Expand dataset size by transforming it (flip, rotate)
-def transform_data(function_name, dataset, labelset):
-    transformed_datasets = []
-    transformed_labelsets = []
+        for x in range(len(dataset)):
+            # Copy original data to the first half
+            expanded_dataset[x, :] = dataset[x]
+            expanded_labelset[x, :] = labelset[x]
 
-    for x in range(len(dataset)):
-        # Transform dataset
-        eighty_one_data = dataset[x][:-2].reshape(9, 9)
-        transformed_data = function_name(eighty_one_data).reshape(81)
-        pass_resign_data = [dataset[x][81], dataset[x][82]]
-        transformed_datasets.append(np.concatenate(
-            (transformed_data, pass_resign_data)))
+            # Transform and store in the second half
+            temp_data = dataset[x, :81].reshape(9, 9)
+            expanded_dataset[len(dataset) + x, :81] = function_name(temp_data).reshape(81)
+            expanded_dataset[len(dataset) + x, 81:] = dataset[x, 81:]
 
-        # Transform labelset
-        eighty_one_label = labelset[x][:-2].reshape(9, 9)
-        transformed_label = function_name(eighty_one_label).reshape(81)
-        pass_resign_label = [labelset[x][81], labelset[x][82]]
-        transformed_labelsets.append(np.concatenate(
-            (transformed_label, pass_resign_label)))
+            temp_label = labelset[x, :81].reshape(9, 9)
+            expanded_labelset[len(labelset) + x, :81] = function_name(temp_label).reshape(81)
+            expanded_labelset[len(labelset) + x, 81:] = labelset[x, 81:]
 
-    # Convert lists back to numpy arrays and concatenate
-    transformed_datasets = np.array(transformed_datasets)
-    transformed_labelsets = np.array(transformed_labelsets)
+        # Flush changes to disk
+        expanded_dataset.flush()
+        expanded_labelset.flush()
 
-    dataset = np.concatenate((dataset, transformed_datasets))
-    labelset = np.concatenate((labelset, transformed_labelsets))
-
-    return dataset, labelset
-
+        return expanded_dataset, expanded_labelset
 
 def pickleFiles(features, labels):
 
     pickleFileCount = int(len(features)/1500000 + 1)
     print("Number of pickle files needed for this sub dataset = ", pickleFileCount)
 
+    # TODO: Fix the range 
     for i in range(pickleFileCount):
         try:
             global globalCount
-            startRange = i * 1500000
-            stopRange = startRange + 1500000
+            range = len(features) / pickleFileCount
+            startRange = i * range
+            stopRange = startRange + range
             print("startRange: ", startRange, " stopRange: ", stopRange)
             print("pickling file: ", str(globalCount))
             pickle_file = pickleRoot + str(globalCount) + '.pickle'
