@@ -12,7 +12,7 @@ class GoGameGUI:
         self.board_size = self.game.size * self.square_size
         # Make the screen the size of the board.
         self.screen = pygame.display.set_mode(
-            (self.board_size, self.board_size))
+            (self.board_size, self.board_size + 30))
 
         pygame.display.set_caption("Go Game")
         self.running = True
@@ -20,6 +20,8 @@ class GoGameGUI:
         # Timer setup for automatic moves
         self.move_interval = 300
         self.last_move_time = 0
+        self.label = 0
+        self.myfont = 0
 
     def draw_board(self):
         self.screen.fill((212, 149, 60))  # Background color
@@ -53,6 +55,15 @@ class GoGameGUI:
                                         i * self.square_size + self.square_size // 2),
                                        self.square_size // 2 - 5)
 
+        self.myfont = pygame.font.SysFont("monospace", 15)
+        black_score, white_score = self.game.get_score()
+
+        winner = self.game.determine_winner()
+
+        score_text = f"Winner: {winner}"
+        self.label = self.myfont.render(score_text, 1, (0, 0, 0))
+        self.screen.blit(self.label, (80, 300))
+
     def make_random_move(self):
         legal_moves = self.game.get_legal_actions()
 
@@ -82,7 +93,10 @@ class GoGameGUI:
                             self.game.step((row, col))
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        self.game.step(("pass"))
+                        _, _, game_over = self.game.step(("pass"))
+                        if game_over:
+                            print("Game over")
+                            # self.running = False
 
             """
             # Check if it's time to make a random move
@@ -97,7 +111,7 @@ class GoGameGUI:
 
 if __name__ == "__main__":
     pygame.init()
-    game = GoGame(size=5)
+    game = GoGame(size=9)
     gui = GoGameGUI(game)
     gui.run()
     pygame.quit()
