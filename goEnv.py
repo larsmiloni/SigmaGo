@@ -31,18 +31,21 @@ class GoGame:
             self.isGameOver = True
             return self.board, 0, True
 
+        # Handle pass action
         if action == "pass":
-            print("pass")
+            print(f"Player {self.turn} passes.")
             self.consecutivePasses += 1
             self.turn = 3 - self.turn  # Switch turns
 
-            if self.consecutivePasses == 2:
-                print("Game is over")
+            # End the game if both players pass consecutively
+            if self.consecutivePasses >= 2:
+                print("Game over due to consecutive passes.")
                 self.isGameOver = True
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
 
+        # Reset consecutive passes if a stone is placed and the last move was not a pass
         self.consecutivePasses = 0
 
         x, y = action
@@ -75,6 +78,10 @@ class GoGame:
                     self.board[i, j] = 0
                     for cx, cy in captured:
                         self.board[cx, cy] = 3 - self.turn
+
+                    # If no legal moves are available except pass/resign
+                    if not legal_moves:
+                        return ["pass", "resign"]
 
         # Add the pass action as a legal move
         legal_moves.append("pass")
