@@ -4,12 +4,13 @@ import govars
 class GoGame:
     def __init__(self, size=9, board=None):
         self.size = size
+        self.shape = tuple(self.size, self.size)
         # Empty = 0, black = 1, white = 2
 
         if board:
             self.board = board 
         else:
-            self.board = np.zeros((self.size, self.size), dtype=int)
+            self.board = np.zeros((self.shape), dtype=int)
         self.turn = 1  # 1 for black, 2 for white
         
         """
@@ -26,7 +27,14 @@ class GoGame:
         All of the channels are 9x9 arrays
         """
         self.state = np.array((govars.NUM_CHNLS, self.size, self.size))
-
+        self.state[govars.BLACK_CHNL] = np.zeros(self.shape)
+        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
+        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
+        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
+        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
+        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
+        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
+        
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
         self.isGameOver = False
@@ -34,8 +42,14 @@ class GoGame:
         self.winner = 0
         
     def reset(self):
-        self.board = np.zeros((self.size, self.size), dtype=int)
-        self.state = np.array((govars.NUM_CHNLS, self.size, self.size))
+        self.board = np.zeros((self.shape), dtype=int)
+        self.state[govars.BLACK_CHNL] = np.zeros((self.shape))
+        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
+        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
+        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
+        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
+        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
+        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
         self.turn = 1
         self.consecutivePasses = 0
         self.history = []
@@ -53,7 +67,7 @@ class GoGame:
             self.winner = 3 - self.turn
             self.isGameOver = True
             self.update_state(previous_move_was_pass)
-            self.state[govars.DONE_CHNL] = np.ones((9, 9))
+            self.state[govars.DONE_CHNL] = np.ones((self.shape))
             return self.board, 0, True
          
         # Handle pass action
