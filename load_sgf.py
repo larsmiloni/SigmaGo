@@ -6,6 +6,7 @@ import pickle
 import timeit
 import os
 from pysgf import SGF
+import math
 
 cwd = os.getcwd()
 path = cwd + '/data'
@@ -149,19 +150,19 @@ def transform_data(function_name, dataset, labelset, dataset_file="dataset_memma
 
 def pickleFiles(features, labels):
 
-    pickleFileCount = int(len(features) / 1_500_000)
+    games = len(features)
+    games_per_file = 1_500_000
+    pickleFileCount = math.ceil(games / games_per_file)
     print("Number of pickle files needed for this sub dataset = ", pickleFileCount)
-
-    range = len(features) / pickleFileCount
     for i in range(pickleFileCount):
         try:
-            startRange = i * range
+            startRange = i * games_per_file
             if i == pickleFileCount - 1:
-                stopRange = startRange + len(features) % 1_500_000
+                stopRange = startRange + games % games_per_file
             else:
-                stopRange = startRange + range
-            print("startRange: ", startRange, " stopRange: ", stopRange)
+                stopRange = startRange + games_per_file
             print("pickling file: ", str(i + 1))
+            print("startRange: ", startRange, " stopRange: ", stopRange)
             pickle_file = pickleRoot + str(i + 1) + '.pickle'
             f = open(pickle_file, 'wb')
             save = {
