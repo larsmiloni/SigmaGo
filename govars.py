@@ -4,8 +4,8 @@ BLACK_PCS = 1
 WHITE_PCS = 2
 
 # Layers
-BLACK = 1
-WHITE = 2
+BLACK = 0
+WHITE = 1
 TURN = 2
 INVD = 3
 PASS = 4
