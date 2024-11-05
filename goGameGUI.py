@@ -56,7 +56,7 @@ class GoGameGUI:
                                        self.square_size // 2 - 5)
 
         self.myfont = pygame.font.SysFont("monospace", 15)
-        black_score, white_score = self.game.get_score()
+        # black_score, white_score = self.game.get_score()
 
         winner = self.game.determine_winner()
 
@@ -89,6 +89,7 @@ class GoGameGUI:
                         col = x // self.square_size
 
                         # Check if a legal board position was clicked
+                        print(self.game.get_legal_actions())
                         if (row, col) in self.game.get_legal_actions():
                             self.game.step((row, col))
                 elif event.type == pygame.KEYDOWN:
@@ -97,6 +98,13 @@ class GoGameGUI:
                         if game_over:
                             print("Game over")
                             # self.running = False
+                    # elif event.key == pygame.K_LEFT:
+                    #     self.game.board = self.game.history[len(
+                    #         self.game.history) - 2]
+                    #     self.game.turn = 3 - self.game.turn
+                    #
+                    # elif event.key == pygame.K_RIGHT:
+                    #     print("forward")
 
             """
             # Check if it's time to make a random move
