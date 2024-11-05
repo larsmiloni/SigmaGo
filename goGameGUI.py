@@ -35,7 +35,7 @@ class GoGameGUI:
                                      self.square_size, self.square_size), 1)
 
                 # Draw gray stones for legal moves
-                if (i, j) in self.game.get_legal_actions():
+                if (j, i) in self.game.get_legal_actions():
                     pygame.draw.circle(self.screen, (211, 211, 211),
                                        (j * self.square_size + self.square_size // 2,
                                         i * self.square_size + self.square_size // 2),
@@ -56,12 +56,12 @@ class GoGameGUI:
                                        self.square_size // 2 - 5)
 
         self.myfont = pygame.font.SysFont("monospace", 15)
-        black_score, white_score = self.game.get_score()
+        #black_score, white_score = self.game.get_score()
 
-        winner = self.game.determine_winner()
+        #winner = self.game.determine_winner()
 
-        score_text = f"Winner: {winner}"
-        self.label = self.myfont.render(score_text, 1, (0, 0, 0))
+        #score_text = f"Winner: {winner}"
+        self.label = self.myfont.render("score_text", 1, (0, 0, 0))
         self.screen.blit(self.label, (80, 300))
 
     def make_random_move(self):
@@ -89,8 +89,8 @@ class GoGameGUI:
                         col = x // self.square_size
 
                         # Check if a legal board position was clicked
-                        if (row, col) in self.game.get_legal_actions():
-                            self.game.step((row, col))
+                        if (col, row) in self.game.get_legal_actions():
+                            self.game.step((col, row))
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         _, _, game_over = self.game.step(("pass"))

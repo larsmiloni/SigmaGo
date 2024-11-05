@@ -3,20 +3,20 @@ import govars
 
 
 class GoGame:
-    def __init__(self, size=9, board=None):
+    def __init__(self, size: int = 9, board: np.ndarray = None):
         self.size = size
-        self.shape = tuple(self.size, self.size)
-        # Empty = 0, black = 1, white = 2
+        self.shape = (self.size, self.size)
 
         if board:
             self.board = board
         else:
-            self.board = np.zeros((self.shape), dtype=int)
+            self.board = np.zeros(self.shape, dtype=int)
         self.turn = 1  # 1 for black, 2 for white
 
         """
+
         State consists of the channels:
-        
+
         0: Black pieces
         1: White pieces
         2: Turn (0 or 1)
@@ -27,36 +27,23 @@ class GoGame:
 
         All of the channels are 9x9 arrays
         """
-        self.state = np.array((govars.NUM_CHNLS, self.size, self.size))
-        self.state[govars.BLACK_CHNL] = np.zeros(self.shape)
-        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
-        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
-        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
-        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
-        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
-        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
+        self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
 
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
-        self.isGameOver = False
 
         self.winner = 0
 
     def reset(self):
         self.board = np.zeros((self.shape), dtype=int)
-        self.state[govars.BLACK_CHNL] = np.zeros((self.shape))
-        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
-        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
-        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
-        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
-        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
-        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
+        self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.turn = 1
         self.consecutivePasses = 0
         self.history = []
         return self.board
 
     def step(self, action):
+        self.get_invalid_moves()
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
 
@@ -65,7 +52,7 @@ class GoGame:
 
         # Handle pass action
         if action == "pass":
-            print(f"Player {self.turn} passes.")
+            print("pass")
             self.consecutivePasses += 1
             self.turn = 3 - self.turn  # Switch turns
 
@@ -74,57 +61,57 @@ class GoGame:
                 print("Game over due to consecutive passes.")
                 self.isGameOver = True
                 self.update_state(previous_move_was_pass)
-                self.state[govars.DONE_CHNL] = np.ones((9, 9))
+                self.state[govars.DONE] = np.ones((9, 9))
                 return self.board, 0, True
 
             return self.board, 0, False  # No reward for passing, game not over
 
-        # Reset consecutive passes if a stone is placed and the last move was not a pass
         self.consecutivePasses = 0
 
         x, y = action
-        self.board[x, y] = self.turn
-        captured_stones = self.check_captures(x, y)  # Capture logic
+        self.board[y, x] = self.turn
+        captured_stones = self.check_captures(y, x)  # Capture logic
 
         self.history.append(self.board.copy())
-        self.turn = 3 - self.turn  # Switch turns
-
         self.update_state(previous_move_was_pass)
+
+        self.turn = 3 - self.turn  # Switch turns
 
         # Reward is number of captured stones
         return self.board, len(captured_stones), False
 
+    def get_invalid_moves(self):
+        # Get invalid moves
+        valid_moves = self.get_legal_actions()
+        invalid_moves = np.ones(self.shape)
+        for move in valid_moves:
+            i, j = move
+            invalid_moves[j][i] = 0
+        self.state[govars.INVD] = invalid_moves
+
     def update_state(self, previous_move_was_pass: int):
         # Update black and white channel
-        black_channel = (self.board == 1).astype(int)
-        self.state[govars.BLACK_CHNL] = black_channel
+        black_channel = (self.board == govars.BLACK_PCS).astype(int)
+        self.state[govars.BLACK] = black_channel
 
-        white_channel = (self.board == 2).astype(int)
-        self.state[govars.WHITE_CHNL] = white_channel
+        white_channel = (self.board == govars.WHITE_PCS).astype(int)
+        self.state[govars.WHITE] = white_channel
 
         # Unsure if turn should be set before or after switching turns
         if self.turn == 1:
-            self.state[govars.TURN_CHNL] = np.zeros((9, 9))
+            self.state[govars.TURN] = np.zeros(self.shape)
         else:
-            self.state[govars.TURN_CHNL] = np.ones((9, 9))
+            self.state[govars.TURN] = np.ones(self.shape)
 
         if previous_move_was_pass:
-            self.state[govars.PASS_CHNL] = np.ones((9, 9))
+            self.state[govars.PASS] = np.ones(self.shape)
         else:
-            self.state[govars.PASS_CHNL] = np.zeros((9, 9))
+            self.state[govars.PASS] = np.zeros(self.shape)
 
-        # Get invalid moves
-        valid_moves = self.get_legal_actions()
-        invalid_moves = np.ones((9, 9))
-        for move in valid_moves:
-            i, j = move
-            invalid_moves[i][j] = 0
-        self.state[govars.INVD_CHNL] = invalid_moves
+        self.state[govars.DONE] = np.zeros(self.shape)
 
-        self.state[govars.DONE_CHNL] = np.zeros((9, 9))
-
-        self.state[govars.BOARD_CHNL] = self.state[govars.BLACK_CHNL] + \
-            (self.state[govars.WHITE_CHNL] * 2)
+        self.state[govars.BOARD] = self.state[govars.BLACK] + \
+            (self.state[govars.WHITE] * 2)
 
     """Get all legal moves on the board. Pass is always a legal move."""
 
@@ -141,14 +128,14 @@ class GoGame:
 
                     # Check if placing this stone results in a self-capture or captures opponent stones and that the move
                     if (not self.is_self_capture((i, j)) or captured) and not self.is_ko():
-                        legal_moves.append((i, j))
+                        legal_moves.append((j, i))
 
                     # Reset the board after checking
                     self.board[i, j] = 0
                     for cx, cy in captured:
                         self.board[cx, cy] = 3 - self.turn
 
-                    # If no legal moves are available except pass
+        # If no legal moves are available except pass
         if not legal_moves:
             return ["pass"]
 
@@ -341,7 +328,7 @@ class GoGame:
         return empty_group, border_colors
 
     def render_in_terminal(self):
-        print("  0 1 2 3 4 5 6")
+        print("  0 1 2 3 4 5 6 7 8")
         for i, row in enumerate(self.board):
             row_print = str(i) + " "
             row_print += '─'.join(['┼' if cell == 0
@@ -421,9 +408,20 @@ print("Winner: ", winner)
 
 """
 
-game = GoGame(size=9)
+game = GoGame(size=3)
 game.reset()
 
+game.step((1, 1))
+game.step((0, 0))
+game.step((2, 1))
+game.step((1, 2))
+
+game.render_in_terminal()
+
+print(game.get_legal_actions())
+
+
+"""
 game.step((5, 0))
 
 game.step((1, 1))
@@ -450,13 +448,15 @@ game.step((0, 6))
 game.step((6, 0))
 game.step((0, 5))
 """
-_, _, game_over = game.step("pass")
-_, _, game_over = game.step("pass")
 """
+_, _, game_over = game.step("pass")
+_, _, game_over = game.step("pass")
+
 _, _, game_over = game.step("resign")
 
 print("game over: ", game_over)
 
 game.render_in_terminal()
-winner = game.determine_winner()
-print("Winner: ", winner)
+#winner = game.determine_winner()
+#print("Winner: ", winner)
+"""

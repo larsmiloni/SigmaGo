@@ -1,5 +1,7 @@
 ANYONE = None
 NOONE = 0
+BLACK_PCS = 1
+WHITE_PCS = 2
 
 # Layers
 BLACK = 1
