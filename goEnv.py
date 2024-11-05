@@ -24,9 +24,6 @@ class GoGame:
 
         self.history = []  # To track past board states (for Ko rules)
 
-        # TODO: remove
-        self.winner = 0
-
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []
@@ -80,7 +77,8 @@ class GoGame:
         self.state[govars.INVD] = invalid_moves
 
     def get_turn(self):
-        return np.max(self.state[govars.TURN]) + 1  # Add 1 to keep range between 1 = black and 2 = white for old methods
+        # Add 1 to keep range between 1 = black and 2 = white for old methods
+        return np.max(self.state[govars.TURN]) + 1
 
     def update_state(self):
         if self.get_turn() == 1:
@@ -96,7 +94,6 @@ class GoGame:
         return self.state[govars.BOARD]
 
     # def update_board(self):
-
 
     """Get all legal moves on the board. Pass is always a legal move."""
 
@@ -256,13 +253,10 @@ class GoGame:
         white_score = white_stones + white_territory
 
         if black_score > white_score:
-            self.winner = 2
             return "Black wins", black_score, white_score
         elif white_score > black_score:
-            self.winner = 1
             return "White wins", black_score, white_score
         else:
-            self.winner = 0
             return "Draw", black_score, white_score
 
     def count_territories(self):
