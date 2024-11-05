@@ -2,15 +2,15 @@ import numpy as np
 import govars
 
 class GoGame:
-    def __init__(self, size=9, board=None):
+    def __init__(self, size: int = 9, board: np.ndarray = None):
         self.size = size
-        self.shape = tuple(self.size, self.size)
+        self.shape = (self.size, self.size)
         # Empty = 0, black = 1, white = 2
 
         if board:
             self.board = board 
         else:
-            self.board = np.zeros((self.shape), dtype=int)
+            self.board = np.zeros(self.shape, dtype=int)
         self.turn = 1  # 1 for black, 2 for white
         
         """
@@ -26,14 +26,7 @@ class GoGame:
 
         All of the channels are 9x9 arrays
         """
-        self.state = np.array((govars.NUM_CHNLS, self.size, self.size))
-        self.state[govars.BLACK_CHNL] = np.zeros(self.shape)
-        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
-        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
-        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
-        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
-        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
-        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
+        self.state = np.zeros((govars.NUM_CHNLS, self.size, self.size))
         
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
@@ -43,13 +36,7 @@ class GoGame:
         
     def reset(self):
         self.board = np.zeros((self.shape), dtype=int)
-        self.state[govars.BLACK_CHNL] = np.zeros((self.shape))
-        self.state[govars.WHITE_CHNL] = np.zeros((self.shape))
-        self.state[govars.TURN_CHNL] = np.zeros((self.shape))
-        self.state[govars.PASS_CHNL] = np.zeros((self.shape))
-        self.state[govars.INVD_CHNL] = np.zeros((self.shape))
-        self.state[govars.DONE_CHNL] = np.zeros((self.shape))
-        self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
+        self.state = np.zeros((govars.NUM_CHNLS, self.size, self.size))
         self.turn = 1
         self.consecutivePasses = 0
         self.history = []
@@ -353,7 +340,7 @@ class GoGame:
     
 
     def render_in_terminal(self):
-        print("  0 1 2 3 4 5 6")
+        print("  0 1 2 3 4 5 6 7 8")
         for i, row in enumerate(self.board):
             row_print = str(i) + " "
             row_print += '─'.join(['┼' if cell == 0
