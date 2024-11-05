@@ -42,25 +42,25 @@ class GoGameGUI:
                                        (self.square_size / 1.5) // 2 - 5)
 
                 # Draw black stones
-                if self.game.board[i, j] == 1:
+                if self.game.get_board()[i, j] == 1:
                     pygame.draw.circle(self.screen, (0, 0, 0),
                                        (j * self.square_size + self.square_size // 2,
                                         i * self.square_size + self.square_size // 2),
                                        self.square_size // 2 - 5)
 
                 # Draw white stones
-                elif self.game.board[i, j] == 2:
+                elif self.game.get_board()[i, j] == 2:
                     pygame.draw.circle(self.screen, (255, 255, 255),
                                        (j * self.square_size + self.square_size // 2,
                                         i * self.square_size + self.square_size // 2),
                                        self.square_size // 2 - 5)
 
         self.myfont = pygame.font.SysFont("monospace", 15)
-        #black_score, white_score = self.game.get_score()
+        # black_score, white_score = self.game.get_score()
 
-        #winner = self.game.determine_winner()
+        # winner = self.game.determine_winner()
 
-        #score_text = f"Winner: {winner}"
+        # score_text = f"Winner: {winner}"
         self.label = self.myfont.render("score_text", 1, (0, 0, 0))
         self.screen.blit(self.label, (80, 300))
 
