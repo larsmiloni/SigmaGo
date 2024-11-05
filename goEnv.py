@@ -1,6 +1,7 @@
 import numpy as np
 import govars
 
+
 class GoGame:
     def __init__(self, size=9, board=None):
         self.size = size
@@ -8,11 +9,11 @@ class GoGame:
         # Empty = 0, black = 1, white = 2
 
         if board:
-            self.board = board 
+            self.board = board
         else:
             self.board = np.zeros((self.shape), dtype=int)
         self.turn = 1  # 1 for black, 2 for white
-        
+
         """
         State consists of the channels:
         
@@ -34,13 +35,13 @@ class GoGame:
         self.state[govars.INVD_CHNL] = np.zeros((self.shape))
         self.state[govars.DONE_CHNL] = np.zeros((self.shape))
         self.state[govars.BOARD_CHNL] = np.zeros((self.shape))
-        
+
         self.history = []  # To track past board states (for Ko rules)
         self.consecutivePasses = 0
         self.isGameOver = False
 
         self.winner = 0
-        
+
     def reset(self):
         self.board = np.zeros((self.shape), dtype=int)
         self.state[govars.BLACK_CHNL] = np.zeros((self.shape))
@@ -62,14 +63,6 @@ class GoGame:
         # Used for updating state
         previous_move_was_pass = self.consecutivePasses
 
-        if action == "resign":
-            print("resignation from:", self.turn)
-            self.winner = 3 - self.turn
-            self.isGameOver = True
-            self.update_state(previous_move_was_pass)
-            self.state[govars.DONE_CHNL] = np.ones((self.shape))
-            return self.board, 0, True
-         
         # Handle pass action
         if action == "pass":
             print(f"Player {self.turn} passes.")
@@ -100,7 +93,7 @@ class GoGame:
 
         # Reward is number of captured stones
         return self.board, len(captured_stones), False
-    
+
     def update_state(self, previous_move_was_pass: int):
         # Update black and white channel
         black_channel = (self.board == 1).astype(int)
@@ -119,11 +112,9 @@ class GoGame:
             self.state[govars.PASS_CHNL] = np.ones((9, 9))
         else:
             self.state[govars.PASS_CHNL] = np.zeros((9, 9))
-        
+
         # Get invalid moves
         valid_moves = self.get_legal_actions()
-        valid_moves.remove('pass')
-        valid_moves.remove('resign')
         invalid_moves = np.ones((9, 9))
         for move in valid_moves:
             i, j = move
@@ -132,8 +123,9 @@ class GoGame:
 
         self.state[govars.DONE_CHNL] = np.zeros((9, 9))
 
-        self.state[govars.BOARD_CHNL] = self.state[govars.BLACK_CHNL] + (self.state[govars.WHITE_CHNL] * 2)
-        
+        self.state[govars.BOARD_CHNL] = self.state[govars.BLACK_CHNL] + \
+            (self.state[govars.WHITE_CHNL] * 2)
+
     """Get all legal moves on the board. Pass is always a legal move."""
 
     def get_legal_actions(self):
@@ -156,13 +148,11 @@ class GoGame:
                     for cx, cy in captured:
                         self.board[cx, cy] = 3 - self.turn
 
-                    # If no legal moves are available except pass/resign
-                    if not legal_moves:
-                        return ["pass", "resign"]
+                    # If no legal moves are available except pass
+        if not legal_moves:
+            return ["pass"]
 
         # Add the pass action as a legal move
-        legal_moves.append("pass")
-        legal_moves.append("resign")
         return legal_moves
 
     """Check that move does not repeat a previous board instance."""
@@ -257,7 +247,6 @@ class GoGame:
         white_stones = sum(1 for i in range(self.size)
                            for j in range(self.size) if self.board[i, j] == 2)
         return black_stones, white_stones
-    
 
     def find_dead_stones(self):
         """Identify groups with no liberties, marking them as dead."""
@@ -278,10 +267,10 @@ class GoGame:
     def determine_winner(self):
         """Determine winner considering dead stones."""
         black_stones, white_stones = self.count_stones()
-        
+
         # Identify dead stones
         black_dead, white_dead = self.find_dead_stones()
-        
+
         # Adjust counts to exclude dead stones
         black_stones -= len(black_dead)
         white_stones -= len(white_dead)
@@ -292,7 +281,6 @@ class GoGame:
         # Total score calculation
         black_score = black_stones + black_territory
         white_score = white_stones + white_territory
-
 
         if black_score > white_score:
             self.winner = 2
@@ -312,7 +300,8 @@ class GoGame:
         for i in range(self.size):
             for j in range(self.size):
                 if self.board[i, j] == 0 and (i, j) not in visited:
-                    empty_group, border_colors = self.get_empty_group_and_borders((i, j))
+                    empty_group, border_colors = self.get_empty_group_and_borders(
+                        (i, j))
                     visited.update(empty_group)
 
                     # If the empty area is bordered by only one color, count it as territory
@@ -350,7 +339,6 @@ class GoGame:
 
         dfs(x, y)
         return empty_group, border_colors
-    
 
     def render_in_terminal(self):
         print("  0 1 2 3 4 5 6")
@@ -359,7 +347,6 @@ class GoGame:
             row_print += '─'.join(['┼' if cell == 0
                                    else ('○' if cell == 1 else '●') for cell in row])
             print(row_print)
-
 
     def sgf_to_coordinates(self, sgf_moves):
         """
@@ -372,16 +359,15 @@ class GoGame:
             # Determine player and move
             player = entry[0]  # 'B' for Black or 'W' for White
             move = entry[2:4]  # Get the two-letter move, e.g., 'fe'
-            
+
             # Convert letters to board coordinates
             row = ord(move[0]) - ord('a')  # Vertical position (y-coordinate)
             col = ord(move[1]) - ord('a')  # Horizontal position (x-coordinate)
-            
+
             # Append to moves list as (player, (row, col))
             moves.append((row, col))
-        
-        return moves
 
+        return moves
 
 
 """
