@@ -93,8 +93,6 @@ class GoGame:
     def get_board(self):
         return self.state[govars.BOARD]
 
-    # def update_board(self):
-
     """Get all legal moves on the board. Pass is always a legal move."""
 
     def get_legal_actions(self):
@@ -148,7 +146,7 @@ class GoGame:
         # If it captures at least one stone, it's not a self-capture
         opponent = 3 - self.get_turn()
         for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board[nx, ny] == opponent:
+            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board()[nx, ny] == opponent:
                 opponent_group = self.get_group((nx, ny))
                 if not any(self.hasLiberties(stone) for stone in opponent_group):
                     return False
@@ -393,8 +391,9 @@ game.reset()
 
 game.step((1, 1))
 game.step((0, 0))
-game.step((2, 1))
+game.step((0, 1))
 game.step((1, 2))
+game.step((1, 0))
 game.step("pass")
 game.step("pass")
 
