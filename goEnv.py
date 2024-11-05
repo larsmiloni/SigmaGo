@@ -5,8 +5,6 @@ class GoGame:
     def __init__(self, size: int = 9, board: np.ndarray = None):
         self.size = size
         self.shape = (self.size, self.size)
-        self.shape = (self.size, self.size)
-        # Empty = 0, black = 1, white = 2
 
         if board:
             self.board = board 
@@ -43,6 +41,7 @@ class GoGame:
         return self.board
 
     def step(self, action):
+        self.get_invalid_moves()
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
 
@@ -79,19 +78,30 @@ class GoGame:
         captured_stones = self.check_captures(y, x)  # Capture logic
 
         self.history.append(self.board.copy())
-        self.turn = 3 - self.turn  # Switch turns
-
         self.update_state(previous_move_was_pass)
+
+        self.turn = 3 - self.turn  # Switch turns
 
         # Reward is number of captured stones
         return self.board, len(captured_stones), False
     
+    def get_invalid_moves(self):
+        # Get invalid moves
+        valid_moves = self.get_legal_actions()
+        valid_moves.remove('pass')
+        valid_moves.remove('resign')
+        invalid_moves = np.ones(self.shape)
+        for move in valid_moves:
+            i, j = move
+            invalid_moves[j][i] = 0
+        self.state[govars.INVD_CHNL] = invalid_moves
+    
     def update_state(self, previous_move_was_pass: int):
         # Update black and white channel
-        black_channel = (self.board == 1).astype(int)
+        black_channel = (self.board == govars.BLACK_PCS).astype(int)
         self.state[govars.BLACK_CHNL] = black_channel
 
-        white_channel = (self.board == 2).astype(int)
+        white_channel = (self.board == govars.WHITE_PCS).astype(int)
         self.state[govars.WHITE_CHNL] = white_channel
 
         # Unsure if turn should be set before or after switching turns
@@ -105,16 +115,6 @@ class GoGame:
         else:
             self.state[govars.PASS_CHNL] = np.zeros(self.shape)
         
-        # Get invalid moves
-        valid_moves = self.get_legal_actions()
-        valid_moves.remove('pass')
-        valid_moves.remove('resign')
-        invalid_moves = np.ones(self.shape)
-        for move in valid_moves:
-            i, j = move
-            invalid_moves[i][j] = 0
-        self.state[govars.INVD_CHNL] = invalid_moves
-
         self.state[govars.DONE_CHNL] = np.zeros(self.shape)
 
         self.state[govars.BOARD_CHNL] = self.state[govars.BLACK_CHNL] + (self.state[govars.WHITE_CHNL] * 2)
