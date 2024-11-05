@@ -60,6 +60,10 @@ class PreTrainedGoNetwork(tf.keras.Model):
         input_vector = np.zeros((1, 83))
         input_vector[0, :81] = board_state.flatten()
         return input_vector
+    
+def softmax(x):
+    e_x = np.exp(x - np.max(x))  # Stability trick for softmax
+    return e_x / e_x.sum()
 
 class MCTSNode:
     """
@@ -72,6 +76,9 @@ class MCTSNode:
         move (tuple): Move that led to this node.
         prior (float): Prior probability from the policy network.
     """
+
+
+
     def __init__(self, game_state, parent=None, move=None, prior=0.0):
         self.game_state = game_state
         self.parent = parent
@@ -86,56 +93,117 @@ class MCTSNode:
 
 
     
-    def select_child(self, c_puct=1.0, rave_weight=0.5):
+    def select_child(self, c_puct=math.sqrt(2), rave_weight=0.5, top_n=5):
         """
-        Selects the child node with the highest UCB score based on exploration-exploitation balance.
-        See https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements for details on the formula.
-
+        Selects a child node using softmax sampling over the top-N highest UCB scores.
+        Includes comprehensive error handling and special move handling for Go.
+        
         Args:
             c_puct (float): Constant for exploration term scaling.
             rave_weight (float): Weight for the RAVE bonus term.
-
+            top_n (int): Number of top children to consider for softmax sampling.
+        
         Returns:
             Tuple: The selected move and child node.
         """
-        best_score = float('-inf')
-        best_child = None
+        # First check if this is a terminal state
+        if self.game_state.isGameOver:
+            return "pass", None
+            
+        # Get legal actions directly from game state
+        legal_actions = self.game_state.get_legal_actions()
         
+        # Handle special cases first
+        if not legal_actions:
+            return "resign", None
+        if set(legal_actions) == {"pass", "resign"}:
+            return "pass", None
+            
+        # If no children exist but we have legal moves, expand first
+        if not self.children and legal_actions:
+            try:
+                policy = self.game_state.network.predict(self.game_state.board)
+                for move in legal_actions:
+                    if move not in ("pass", "resign"):
+                        move_idx = move[0] * 9 + move[1]
+                        new_state = copy.deepcopy(self.game_state)
+                        new_state.step(move)
+                        self.children[move] = MCTSNode(
+                            new_state,
+                            parent=self,
+                            move=move,
+                            prior=policy[move_idx]
+                        )
+            except AttributeError:
+                # If no network available, use uniform prior
+                prior = 1.0 / len(legal_actions)
+                for move in legal_actions:
+                    if move not in ("pass", "resign"):
+                        new_state = copy.deepcopy(self.game_state)
+                        new_state.step(move)
+                        self.children[move] = MCTSNode(
+                            new_state,
+                            parent=self,
+                            move=move,
+                            prior=prior
+                        )
         
-        for move, child in self.children.items():
-            # Calculate Q-value (exploitation term)
-            q_value = child.value / child.visits if child.visits > 0 else 0
+        # Now calculate scores for existing children
+        scores = []
+        moves = []
+        children = list(self.children.items())
+        
+        if not children:
+            # If still no children after expansion attempt, fall back to pass
+            return "pass", None
             
-            # Add nonzero prior probability for better policy-informed exploration
-            u_value = c_puct * child.prior * math.sqrt(self.visits) / (1 + child.visits)
+        for move, child in children:
+            # Safe score calculation with error handling
+            try:
+                q_value = child.value / max(child.visits, 1)  # Avoid division by zero
+                u_value = c_puct * child.prior * math.sqrt(max(self.visits, 1)) / (1 + child.visits)
+                rave_bonus = (rave_weight * (child.rave_value / max(child.rave_visits, 1)) 
+                            if child.rave_visits > 0 else 0)
+                
+                # Add small noise for exploration and to break ties
+                noise = np.random.normal(0, 0.01)
+                score = q_value + u_value + rave_bonus + noise
+                
+                scores.append(score)
+                moves.append((move, child))
+            except Exception as e:
+                print(f"Warning: Error calculating score for move {move}: {e}")
+                continue
+        
+        # Handle case where all score calculations failed
+        if not scores:
+            return "pass", None
+        
+        # Select top-N moves safely
+        top_n = min(top_n, len(scores))  # Adjust top_n if we have fewer moves
+        indices = np.argsort(scores)[-top_n:]
+        top_moves = [moves[i] for i in indices]
+        top_scores = [scores[i] for i in indices]
+        
+        try:
+            # Apply temperature scaling for exploration control
+            temperature = max(0.1, min(1.0, 20.0 / (self.visits + 1)))
+            scaled_scores = [s / temperature for s in top_scores]
+            probs = softmax(scaled_scores)
             
-            # Add RAVE bonus term
-            rave_bonus = rave_weight * (child.rave_value / (1 + child.rave_visits)) if child.rave_visits > 0 else 0
+            # Verify probabilities sum to 1 and are valid
+            if not np.isclose(sum(probs), 1.0) or np.any(np.isnan(probs)):
+                raise ValueError("Invalid probability distribution")
+                
+            sampled_index = np.random.choice(len(top_moves), p=probs)
+            selected_move, selected_child = top_moves[sampled_index]
             
-            # Combine terms into the final score
-            score = q_value + u_value + rave_bonus
-            
-            # Debugging outputs
-            # print(f"Move: {move}")
-            # print(f" - Prior: {child.prior}")
-            # print(f" - Q-value (exploitation): {q_value}")
-            # print(f" - U-value (exploration): {u_value}")
-            # print(f" - RAVE bonus: {rave_bonus}")
-            # print(f" - Combined score: {score}")
-            if len(list(self.children.keys())) < 3:
-                print("Available children and moves:", list(self.children.keys()))
-
-            
-            if score > best_score:
-                best_score = score
-                best_child = (move, child)
-
-        # if best_child:
-        #     print(f"Selected best move: {best_child[0]} with score: {best_score}")
-        # else:
-        #     print("No valid child selected (best_child is None).")
-
-        return best_child if best_child else ("pass", None)
+        except Exception as e:
+            print(f"Warning: Error in move selection: {e}")
+            # Fall back to highest scoring move
+            selected_move, selected_child = top_moves[-1]
+        
+        return selected_move, selected_child
 
 
     def backup(self, reward):
@@ -379,7 +447,7 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
     # Prepare batch data
     states = np.array([data['state'] for data in training_data])
     policies = np.array([data['policy'] for data in training_data])
-    # values = np.array([data['value'] for data in training_data])
+    values = np.array([data['value'] for data in training_data])
     
     # Train in mini-batches
     batch_size = 32
@@ -391,10 +459,10 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
         
         batch_states = states[start_idx:end_idx]
         batch_policies = policies[start_idx:end_idx]
-        # batch_values = values[start_idx:end_idx]
+        batch_values = values[start_idx:end_idx]
         
-        # loss = network.train_on_batch(batch_states, [batch_policies, batch_values])
-        loss = network.train_on_batch(batch_states, batch_policies)
+        loss = network.train_on_batch(batch_states, [batch_policies, batch_values])
+        # loss = network.train_on_batch(batch_states, batch_policies)
         
         if batch_idx % 10 == 0:
             print(f"Batch {batch_idx}/{num_batches}, Loss: {loss:.4f}")
