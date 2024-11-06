@@ -103,7 +103,7 @@ def parseMoves(file_name: str, labels: List, features: List):
     get_states(file_name, features, labels)
 
 
-def loadFiles(pathName, rankingSystem):
+def sort_files(pathName, rankingSystem):
     sgfFiles = glob.glob(pathName + "*.sgf")
 
     for file in sgfFiles:
@@ -196,8 +196,9 @@ def loadFiles(pathName, rankingSystem):
                 os.rename(file, pathName + "nine/nine_strong/" + filename)
         print("Strong 9x9 games found: ",  countFiles(
             pathName + "nine/nine_strong"))
-    # End of ranking system checker
 
+def parse_and_save_files(path, rank_system):
+    sort_files(path, rank_system)
     labels = []
     features = []
 
@@ -205,13 +206,9 @@ def loadFiles(pathName, rankingSystem):
     start_time = timeit.default_timer()
 
     nine_files_strong = glob.glob(
-        pathName + "nine/" + "nine_strong/" + "*.sgf")
+        path + "nine/" + "nine_strong/" + "*.sgf")
 
-    k = 0
     for nfile in nine_files_strong:
-        k = k + 1
-        if k == 100:
-            break
         if nfile.endswith(".sgf"):
             filename = os.path.basename(nfile)
         else:
@@ -227,7 +224,7 @@ def loadFiles(pathName, rankingSystem):
             parseMoves(nfile, labels, features)
         except Exception as e:
             print('Error in reading moves in SGF file: ', nfile, e)
-            os.rename(nfile, pathName + "error/" + filename)
+            os.rename(nfile, path + "error/" + filename)
 
     labels_array = np.array(labels).astype('float32')
     features_array = np.array(features).astype('float32')
@@ -239,7 +236,6 @@ def loadFiles(pathName, rankingSystem):
 
     #features_array, labels_array = transform_data(
     #    np.fliplr, features_array, labels_array)
-    #print("fliplr done")
     #print("labels shape: ", labels_array.shape)
     #print("features shape: ", features_array.shape)
 
@@ -262,4 +258,4 @@ def loadFiles(pathName, rankingSystem):
     pickleFiles(features_array, labels_array)
 
 print("Handicap games found:", HANDICAP_GAMES)
-loadFiles(top50Path, "ELO")
+parse_and_save_files(top50Path, 'ELO')
