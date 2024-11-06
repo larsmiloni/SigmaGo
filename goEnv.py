@@ -1,28 +1,12 @@
 import numpy as np
 import govars
 
-
 class GoGame:
-    def __init__(self, size: int = 9, board: np.ndarray = None):
+    def __init__(self, size: int = 9):
         self.size = size
         self.shape = (self.size, self.size)
-
-        """
-        State consists of the channels:
-
-        0: Black pieces
-        1: White pieces
-        2: Turn (0 or 1)
-        3: Invalid moves (0 or 1)
-        4: Previous move was a pass
-        5: Game over (0 or 1)
-        6: Board (0, 1, 2)
-
-        All of the channels are 9x9 arrays
-        """
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
-
-        self.history = []  # To track past board states (for Ko rules)
+        self.history = []
 
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
@@ -33,51 +17,42 @@ class GoGame:
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
 
-        # Used for updating state
         previous_move_was_pass = np.max(self.state[govars.PASS] == 1) == 1
 
-        # Handle pass action
         if action == "pass":
             self.state[govars.PASS] = 1
             print("pass")
-            self.update_state()  # Switch turns
+            self.update_state()
 
-            # End the game if both players pass consecutively
             if previous_move_was_pass:
                 print("Game over due to consecutive passes.")
                 self.isGameOver = True
-                # self.update_state(previous_move_was_pass)
                 self.state[govars.DONE] = 1
                 return self.get_board(), 0, True
 
-            return self.get_board(), 0, False  # No reward for passing, game not over
+            return self.get_board(), 0, False
 
         self.state[govars.PASS] = 0
 
         x, y = action
-        self.get_board()[y, x] = self.get_turn()
-        captured_stones = self.check_captures(y, x)  # Capture logic
+        # Place stone at (x,y) on the board
+        self.get_board()[y][x] = self.get_turn()
+        captured_stones = self.check_captures(x, y)
 
         self.history.append(self.get_board().copy())
-        # self.update_state(previous_move_was_pass)
-
         self.update_state()
 
-        # Reward is number of captured stones
         return self.get_board(), len(captured_stones), False
 
     def get_invalid_moves(self):
-        # Get invalid moves
         valid_moves = self.get_legal_actions()
         valid_moves.remove("pass")
         invalid_moves = np.ones(self.shape)
-        for move in valid_moves:
-            i, j = move
-            invalid_moves[j][i] = 0
+        for x, y in valid_moves:
+            invalid_moves[y][x] = 0
         self.state[govars.INVD] = invalid_moves
 
     def get_turn(self):
-        # Add 1 to keep range between 1 = black and 2 = white for old methods
         return np.max(self.state[govars.TURN]) + 1
 
     def update_state(self):
@@ -93,37 +68,76 @@ class GoGame:
     def get_board(self):
         return self.state[govars.BOARD]
 
-    """Get all legal moves on the board. Pass is always a legal move."""
-
     def get_legal_actions(self):
         legal_moves = []
-        size = self.size
 
-        for i in range(size):
-            for j in range(size):
-                if self.get_board()[i, j] == 0:
-                    # Temporarily place a stone to check if it results in a legal move
-                    self.get_board()[i, j] = self.get_turn()
-                    captured = self.check_captures(i, j)
+        for x in range(self.size):
+            for y in range(self.size):
+                if self.get_board()[y][x] == 0:
+                    self.get_board()[y][x] = self.get_turn()
+                    captured = self.check_captures(x, y)
 
-                    # Check if placing this stone results in a self-capture or captures opponent stones and that the move
-                    if (not self.is_self_capture((i, j)) or captured) and not self.is_ko():
-                        legal_moves.append((j, i))
+                    if (not self.is_self_capture((x, y)) or captured) and not self.is_ko():
+                        if not self.is_in_two_eye_group((x, y)):
+                            legal_moves.append((x, y))
 
-                    # Reset the board after checking
-                    self.get_board()[i, j] = 0
+                    self.get_board()[y][x] = 0
                     for cx, cy in captured:
-                        self.get_board()[cx, cy] = 3 - self.get_turn()
+                        self.get_board()[cy][cx] = 3 - self.get_turn()
 
-        # If no legal moves are available except pass
         if not legal_moves:
             return ["pass"]
 
-        # Add the pass action as a legal move
         legal_moves.append("pass")
         return legal_moves
 
-    """Check that move does not repeat a previous board instance."""
+    def is_in_two_eye_group(self, move):
+        x, y = move
+        group = self.get_group((x, y))
+        eye_count = sum(self.is_eye(stone, self.get_turn()) for stone in group)
+        return eye_count >= 2
+
+    def is_eye(self, position, color):
+        """Check if a position is an eye for the given color.
+        An eye is an empty point surrounded by stones of the same color,
+        where the diagonal points are either friendly stones or the point is on the edge."""
+        x, y = position
+        board = self.get_board()
+        
+        # The position itself must be empty
+        if board[y][x] != 0:
+            return False
+            
+        # Check orthogonal positions (adjacent)
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size:
+                if board[ny][nx] != color:
+                    return False
+            
+        # Count diagonal positions that need to be checked
+        required_diagonal_stones = 0
+        diagonal_stones = 0
+        
+        # Check diagonal positions
+        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size:
+                required_diagonal_stones += 1
+                if board[ny][nx] == color:
+                    diagonal_stones += 1
+        
+        # For corner positions
+        if required_diagonal_stones <= 2:
+            return True
+        # For edge positions
+        elif required_diagonal_stones == 3:
+            return diagonal_stones >= 2
+        # For center positions
+        else:
+            return diagonal_stones >= 3
+        
+
 
     def is_ko(self):
         for board in self.history:
@@ -131,314 +145,177 @@ class GoGame:
                 return True
         return False
 
-    """Check if placing a stone at the given move results in self-capture."""
-
     def is_self_capture(self, move):
         x, y = move
-
         group = self.get_group((x, y))
 
-        # If the placed stone or its group has liberties, the move is not a self-capture
         if any(self.hasLiberties(stone) for stone in group):
             return False
 
-        # Check if placing this stone captures any opponent stones
-        # If it captures at least one stone, it's not a self-capture
         opponent = 3 - self.get_turn()
-        for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board()[nx, ny] == opponent:
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board()[ny][nx] == opponent:
                 opponent_group = self.get_group((nx, ny))
                 if not any(self.hasLiberties(stone) for stone in opponent_group):
                     return False
 
-        # If no liberties and no opponent captures, it's a self-capture
         return True
-
-    """Get all stones connected to the given intersection (same color)."""
 
     def get_group(self, intersection):
         x, y = intersection
-        color = self.get_board()[x, y]
+        color = self.get_board()[y][x]
         visited = set()
         group = []
 
         def dfs(px, py):
             if (px, py) in visited:
                 return
-            if not (0 <= px < len(self.get_board()) and 0 <= py < len(self.get_board())):
+            if not (0 <= px < self.size and 0 <= py < self.size):
                 return
-            if self.get_board()[px, py] != color:
+            if self.get_board()[py][px] != color:
                 return
 
             visited.add((px, py))
             group.append((px, py))
 
-            # Explore all four directions
-            for nx, ny in [(px-1, py), (px+1, py), (px, py-1), (px, py+1)]:
-                dfs(nx, ny)
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                dfs(px + dx, py + dy)
 
         dfs(x, y)
         return group
 
-    """Check if an intersection has any empty intersections adjacent to it (has liberties)."""
-
     def hasLiberties(self, intersection):
         x, y = intersection
-        size = len(self.get_board())
-
-        for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-            if 0 <= nx < size and 0 <= ny < size and self.get_board()[nx][ny] == 0:
+        
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board()[ny][nx] == 0:
                 return True
 
         return False
-
-    """Check and capture any opponent groups that have no liberties."""
 
     def check_captures(self, x, y):
         opponent = 3 - self.get_turn()
         captured_stones = []
 
-        # Check all four adjacent positions for opponent stones
-        for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
-            if 0 <= nx < len(self.get_board()) and 0 <= ny < len(self.get_board()) and self.get_board()[nx, ny] == opponent:
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size and self.get_board()[ny][nx] == opponent:
                 group = self.get_group((nx, ny))
                 if not any(self.hasLiberties(stone) for stone in group):
                     captured_stones.extend(group)
                     for gx, gy in group:
-                        self.get_board()[gx, gy] = 0  # Remove captured stones
+                        self.get_board()[gy][gx] = 0
 
         return captured_stones
 
     def count_stones(self):
-        black_stones = sum(1 for i in range(self.size)
-                           for j in range(self.size) if self.get_board()[i, j] == 1)
-        white_stones = sum(1 for i in range(self.size)
-                           for j in range(self.size) if self.get_board()[i, j] == 2)
+        black_stones = sum(1 for y in range(self.size)
+                         for x in range(self.size) if self.get_board()[y][x] == 1)
+        white_stones = sum(1 for y in range(self.size)
+                         for x in range(self.size) if self.get_board()[y][x] == 2)
         return black_stones, white_stones
 
-    def find_dead_stones(self):
-        """Identify groups with no liberties, marking them as dead."""
-        black_dead, white_dead = set(), set()
-
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.get_board()[i, j] in (1, 2):  # Only check stones
-                    group = self.get_group((i, j))
-                    if not any(self.hasLiberties(stone) for stone in group):
-                        if self.get_board()[i, j] == 1:
-                            black_dead.update(group)
-                        else:
-                            white_dead.update(group)
-
-        return black_dead, white_dead
-
-    def determine_winner(self):
-        """Determine winner considering dead stones."""
-        black_stones, white_stones = self.count_stones()
-
-        # Identify dead stones
-        black_dead, white_dead = self.find_dead_stones()
-
-        # Adjust counts to exclude dead stones
-        black_stones -= len(black_dead)
-        white_stones -= len(white_dead)
-
-        # Calculate territory for black and white
-        black_territory, white_territory = self.count_territories()
-
-        # Total score calculation
-        black_score = black_stones + black_territory
-        white_score = white_stones + white_territory
-
-        if black_score > white_score:
-            return "Black wins", black_score, white_score
-        elif white_score > black_score:
-            return "White wins", black_score, white_score
-        else:
-            return "Draw", black_score, white_score
-
-    def count_territories(self):
-        visited = set()
-        black_territory = 0
-        white_territory = 0
-
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.get_board()[i, j] == 0 and (i, j) not in visited:
-                    empty_group, border_colors = self.get_empty_group_and_borders(
-                        (i, j))
-                    visited.update(empty_group)
-
-                    # If the empty area is bordered by only one color, count it as territory
-                    if len(border_colors) == 1:
-                        if 1 in border_colors:
-                            black_territory += len(empty_group)
-                        elif 2 in border_colors:
-                            white_territory += len(empty_group)
-
-        return black_territory, white_territory
-
-    def get_empty_group_and_borders(self, intersection):
-        x, y = intersection
-        visited = set()
-        empty_group = []
-        border_colors = set()
-
-        def dfs(px, py):
-            if (px, py) in visited:
-                return
-            if not (0 <= px < self.size and 0 <= py < self.size):
-                return
-
-            visited.add((px, py))
-
-            if self.get_board()[px, py] == 0:
-                empty_group.append((px, py))
-
-                # Explore all four directions
-                for nx, ny in [(px-1, py), (px+1, py), (px, py-1), (px, py+1)]:
-                    dfs(nx, ny)
-            else:
-                # Record border color if we reach a stone
-                border_colors.add(self.get_board()[px, py])
-
-        dfs(x, y)
-        return empty_group, border_colors
-
     def render_in_terminal(self):
-        print("  0 1 2 3 4 5 6 7 8")
+        colNums = "  " + " ".join(str(i) for i in range(self.size))
+        print(colNums)
         for i, row in enumerate(self.get_board()):
             row_print = str(i) + " "
             row_print += '─'.join(['┼' if cell == 0
-                                   else ('○' if cell == 1 else '●') for cell in row])
+                                else ('○' if cell == 1 else '●') for cell in row])
             print(row_print)
 
     def sgf_to_coordinates(self, sgf_moves):
-        """
-        Convert SGF move notation to a list of (row, col) coordinates.
-        """
         moves = []
         for entry in sgf_moves.split(';'):
             if not entry:
                 continue
-            # Determine player and move
-            player = entry[0]  # 'B' for Black or 'W' for White
-            move = entry[2:4]  # Get the two-letter move, e.g., 'fe'
-
-            # Convert letters to board coordinates
-            row = ord(move[0]) - ord('a')  # Vertical position (y-coordinate)
-            col = ord(move[1]) - ord('a')  # Horizontal position (x-coordinate)
-
-            # Append to moves list as (player, (row, col))
-            moves.append((row, col))
+            player = entry[0]
+            move = entry[2:4]
+            
+            x = ord(move[0]) - ord('a')
+            y = ord(move[1]) - ord('a')
+            
+            moves.append((x, y))
 
         return moves
+    
+    def end_game(self):
+        flag = False
+
+        while not flag:
+            print(game.get_legal_actions())
+            _, _, flag = game.step(game.get_legal_actions()[0])
 
 
-"""
-#Example Usage
 game = GoGame(size=7)
 game.reset()
-print(game.get_legal_actions())
-game.step((0, 2))
+
 game.step((0, 1))
-game.step((0, 3))
-game.step((1, 2))
-game.step((4, 2))
-game.step((1, 3))
-game.step((5, 3))
-game.step((0, 4))
 game.step((0, 2))
+
+game.step((1, 1))
+game.step((1, 2))
+
+game.step((2, 1))
+game.step((2, 2))
+
+game.step((3, 1))
+game.step((3, 2))
+
+game.step((4, 1))
 game.step((3, 3))
-game.step((5, 5))
-game.render_in_terminal()
 
-# Reset game when two consecutive passes
-_, _, game_over = game.step("pass")
-if game_over:
-    game.reset()
+game.step((4, 2))
+game.step((4, 3))
 
-_, _, game_over = game.step(("pass"))
-if game_over:
-    game.reset()
-game.render_in_terminal()
-"""
-
-
-"""
-game = GoGame(size=9)
-game.reset()
-
-# Example SGF moves string
-sgf_moves = ";B[fe];W[de];B[dd];W[cd];B[dc];W[ee];B[fd];W[ff];B[gf];W[ed];B[ec];W[ef];B[ce];W[cc];B[cb];W[bb];B[db];W[be];B[cf];W[gg];B[bf];W[bc];B[ae];W[ad];B[bd];W[fc];B[gc];W[fb];B[gb];W[cg];B[ac];W[hf];B[ge];W[he];B[gd];W[dg];B[hd];W[bg];B[ba];W[ag];B[ie];W[hg];B[if];W[ig];B[id];W[af];B[ab];W[df]"
-
-# Convert SGF to list of moves
-moves = game.sgf_to_coordinates(sgf_moves)
-
-# Print the moves in (player, (row, col)) format
-for move in moves:
-    game.step(move)
-    print(move)
-
-game.render_in_terminal()
-winner = game.determine_winner()
-print("Winner: ", winner)
-
-"""
-
-game = GoGame(size=3)
-game.reset()
-
-game.step((1, 1))
-game.step((0, 0))
-game.step((0, 1))
-game.step((1, 2))
-game.step((1, 0))
-game.step("pass")
-game.step("pass")
-
-
-game.render_in_terminal()
-
-print(game.get_legal_actions())
-
-
-"""
-game.step((5, 0))
-
-game.step((1, 1))
-game.step((5, 1))
-
-game.step((1, 2))
 game.step((5, 2))
-
-game.step((1, 3))
 game.step((5, 3))
 
-game.step((1, 4))
+game.step((6, 2))
+game.step((6, 3))
+
+game.step((0, 5))
 game.step((5, 4))
 
 game.step((1, 5))
 game.step((5, 5))
 
-game.step((1, 6))
+game.step((2, 5))
+game.step((5, 6))
+
+game.step((3, 5))
 game.step((6, 5))
 
-game.step((0, 2))
-game.step((0, 6))
+game.step((3, 6))
+game.step((0, 3))
 
-game.step((6, 0))
-game.step((0, 5))
-"""
-"""
-_, _, game_over = game.step("pass")
-_, _, game_over = game.step("pass")
+game.step((1, 6))
+game.step((3, 0))
 
-_, _, game_over = game.step("resign")
+game.step(("pass"))
+game.step((0, 4))
 
-print("game over: ", game_over)
+game.step(("pass"))
+game.step((1, 4))
+
+game.step(("pass"))
+game.step((2, 4))
+
+game.step(("pass"))
+game.step((3, 4))
+
+game.step(("pass"))
+game.step((4, 4))
+
+game.step(("pass"))
+game.step((4, 5))
+
+game.step(("pass"))
 
 game.render_in_terminal()
-#winner = game.determine_winner()
-#print("Winner: ", winner)
-"""
+game.end_game()
+game.render_in_terminal()
+#print(game.get_legal_actions())
+#print("GROOO:", game.get_group((1, 3)))
