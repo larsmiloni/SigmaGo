@@ -7,6 +7,7 @@ class GoGame:
         self.shape = (self.size, self.size)
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []
+        self.prisoners = {1: 0, 2: 0}
 
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
@@ -90,12 +91,6 @@ class GoGame:
 
         legal_moves.append("pass")
         return legal_moves
-
-    def is_in_two_eye_group(self, move):
-        x, y = move
-        group = self.get_group((x, y))
-        eye_count = sum(self.is_eye(stone, self.get_turn()) for stone in group)
-        return eye_count >= 2
 
     def is_eye(self, position, color):
         """Check if a position is an eye for the given color.
@@ -241,13 +236,134 @@ class GoGame:
 
         return moves
     
+
+    def count_territory(self):
+        """Count territory using Chinese rules"""
+        territory = {1: 0, 2: 0}  # Black and White territory
+        visited = set()
+        
+        def flood_fill(x, y):
+            """Returns (territory_color, size) or (0, 0) if neutral"""
+            if (x, y) in visited or not (0 <= x < self.size and 0 <= y < self.size):
+                return 0, 0
+                
+            visited.add((x, y))
+            current = self.get_board()[y][x]
+            
+            if current != 0:  # If it's a stone, count it for that player
+                return current, 1
+                
+            surrounding_colors = set()
+            region_size = 1
+            
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.size and 0 <= ny < self.size:
+                    color, size = flood_fill(nx, ny)
+                    if color != 0:
+                        surrounding_colors.add(color)
+                    region_size += size
+            
+            # If region is surrounded by only one color, it's their territory
+            if len(surrounding_colors) == 1:
+                return surrounding_colors.pop(), region_size
+            return 0, 0  # Neutral territory
+            
+        # Count all regions
+        for x in range(self.size):
+            for y in range(self.size):
+                if (x, y) not in visited:
+                    color, size = flood_fill(x, y)
+                    if color in territory:
+                        territory[color] += size
+                        
+        return territory
+
+    def determine_winner(self):
+        """Determine winner using Chinese rules"""
+        territory = self.count_territory()
+        black_score = territory[1]  # Black's territory and stones
+        white_score = territory[2] #+ 7.5  # White's territory and stones plus komi
+        
+        print(f"Black's score: {black_score}")
+        print(f"White's score: {white_score}")
+        
+        if black_score > white_score:
+            return "Black wins by " + str(black_score - white_score) + " points"
+        elif white_score > black_score:
+            return "White wins by " + str(white_score - black_score) + " points"
+        else:
+            return "The game is a draw"
+
+    def is_in_two_eye_group(self, move):
+        """Check if filling this eye would remove a vital eye from a group with exactly two eyes"""
+        x, y = move
+        group = self.get_group((x, y))
+        
+        # First, simulate placing the stone
+        self.get_board()[y][x] = self.get_turn()
+        eyes = []
+        
+        # Find all eyes of the group
+        for i in range(self.size):
+            for j in range(self.size):
+                if (i, j) not in group and self.is_eye((i, j), self.get_turn()):
+                    connected_to_group = False
+                    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nx, ny = i + dx, j + dy
+                        if (nx, ny) in group:
+                            connected_to_group = True
+                            break
+                    if connected_to_group:
+                        eyes.append((i, j))
+        
+        # Remove the simulated stone
+        self.get_board()[y][x] = 0
+        
+        # If the group has exactly two eyes and we're trying to fill one
+        return len(eyes) == 2 and (x, y) in eyes
+
     def end_game(self):
-        flag = False
+        """Handle end game under Chinese rules"""
+        # Remove dead groups
+        dead_stones = self.identify_dead_groups()
+        for stone in dead_stones:
+            x, y = stone
+            self.get_board()[y][x] = 0
+        
+        # Determine and print winner
+        result = self.determine_winner()
+        print(result)
+        return result
 
-        while not flag:
-            print(game.get_legal_actions())
-            _, _, flag = game.step(game.get_legal_actions()[0])
+    def identify_dead_groups(self):
+        """Identify groups that are completely surrounded (dead)"""
+        dead_stones = set()
+        
+        for y in range(self.size):
+            for x in range(self.size):
+                if self.get_board()[y][x] != 0:
+                    group = self.get_group((x, y))
+                    if not self.has_living_space(group):
+                        dead_stones.update(group)
+                        
+        return dead_stones
 
+    def has_living_space(self, group):
+        """Check if a group has potential to live (has or can make eyes)"""
+        eye_spaces = 0
+        potential_eyes = set()
+        
+        # Check all empty points adjacent to the group
+        for x, y in group:
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < self.size and 0 <= ny < self.size and 
+                    self.get_board()[ny][nx] == 0 and 
+                    self.is_eye((nx, ny), self.get_board()[y][x])):
+                    potential_eyes.add((nx, ny))
+        
+        return len(potential_eyes) >= 2
 
 game = GoGame(size=7)
 game.reset()
@@ -294,16 +410,16 @@ game.step((0, 3))
 game.step((1, 6))
 game.step((3, 0))
 
-game.step(("pass"))
+game.step((1, 0))
 game.step((0, 4))
 
-game.step(("pass"))
+game.step((5, 0))
 game.step((1, 4))
 
-game.step(("pass"))
+game.step((5, 1))
 game.step((2, 4))
 
-game.step(("pass"))
+game.step((6, 0))
 game.step((3, 4))
 
 game.step(("pass"))
