@@ -3,7 +3,7 @@ import govars
 
 
 class GoGame:
-    def __init__(self, size: int = 9, board: np.ndarray = None):
+    def __init__(self, size: int = 9):
         self.size = size
         self.shape = (self.size, self.size)
 
@@ -45,8 +45,6 @@ class GoGame:
             # End the game if both players pass consecutively
             if previous_move_was_pass:
                 print("Game over due to consecutive passes.")
-                self.isGameOver = True
-                # self.update_state(previous_move_was_pass)
                 self.state[govars.DONE] = 1
                 return self.get_board(), 0, True
 
@@ -59,7 +57,6 @@ class GoGame:
         captured_stones = self.check_captures(y, x)  # Capture logic
 
         self.history.append(self.get_board().copy())
-        # self.update_state(previous_move_was_pass)
 
         self.update_state()
 
@@ -79,6 +76,8 @@ class GoGame:
     def get_turn(self):
         # Add 1 to keep range between 1 = black and 2 = white for old methods
         return np.max(self.state[govars.TURN]) + 1
+
+    """Updates the layer of the color whose turn it is. Then updates/switches turn."""
 
     def update_state(self):
         if self.get_turn() == 1:
