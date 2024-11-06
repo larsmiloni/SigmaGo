@@ -124,9 +124,6 @@ class PolicyNetwork(torch.nn.Module):
             correct_predictions = 0
             total_predictions = 0
 
-            if save:
-                torch.save(self.state_dict(), self.model_name + "-P{}.pt".format(iter))
-
             for i in range(num_batch):
                 batch_x = x[i*batch_size:(i+1)*batch_size].float().to(self.device)
                 batch_y = y[i*batch_size:(i+1)*batch_size].float().to(self.device)
@@ -150,8 +147,6 @@ class PolicyNetwork(torch.nn.Module):
                 if (iter * num_batch + i) % test_interval == 0:
                     self.test_model(x_t, y_t)
                     self.test_iteration.append(iter * num_batch + i)
-                    if save:
-                        self.save_metrics()
 
             # Calculate average training loss and training accuracy for the iteration
             avg_training_loss = training_loss_sum / num_batch
@@ -163,11 +158,10 @@ class PolicyNetwork(torch.nn.Module):
             print(f"Training Accuracy: {training_accuracy * 100:.2f}%")
             if self.test_accuracies:
                 print(f"Test Accuracy: {self.test_accuracies[-1] * 100:.2f}%")
-
             torch.cuda.empty_cache()
-
-        if save:
-            self.save_metrics()
+        
+        self.save()
+            
 
     def test_model(self, x_t, y_t):
 
@@ -282,7 +276,7 @@ def load_features_labels(test_size: int):
 def main():
     pn = PolicyNetwork(alpha=0.01, num_res=3, num_channel=64)
     x_train, y_train, x_test, y_test = load_features_labels(1000)
-    pn.optimize(x_train, y_train, x_test, y_test, batch_size=1_000, iterations=1_000)
+    pn.optimize(x_train, y_train, x_test, y_test, batch_size=1_000, iterations=1_000, save=True)
     print(pn.forward(x_train).shape)
     plt.plot(pn.historical_loss)
     plt.show()
