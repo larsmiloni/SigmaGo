@@ -53,8 +53,8 @@ class MCTSNode:
         
         # Handle special cases first
         if not legal_actions:
-            return "resign", None
-        if set(legal_actions) == {"pass", "resign"}:
+            return "pass", None
+        if set(legal_actions) == {"pass"}:
             return "pass", None
             
         # If no children exist but we have legal moves, expand first
@@ -62,7 +62,7 @@ class MCTSNode:
             try:
                 policy, _ = self.game_state.network.predict(self.game_state.state)
                 for move in legal_actions:
-                    if move not in ("pass", "resign"):
+                    if move not in ("pass"):
                         move_idx = move[0] * 9 + move[1]
                         new_state = copy.deepcopy(self.game_state)
                         new_state.step(move)
@@ -76,7 +76,7 @@ class MCTSNode:
                 # If no network available, use uniform prior
                 prior = 1.0 / len(legal_actions)
                 for move in legal_actions:
-                    if move not in ("pass", "resign"):
+                    if move not in ("pass"):
                         new_state = copy.deepcopy(self.game_state)
                         new_state.step(move)
                         self.children[move] = MCTSNode(
