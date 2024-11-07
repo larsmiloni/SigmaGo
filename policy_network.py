@@ -37,7 +37,7 @@ class Block(torch.nn.Module):
 
 class PolicyNetwork(torch.nn.Module):
 
-    def __init__(self, alpha, num_res=3, num_channel=3, model_path):
+    def __init__(self, alpha, model_path, num_res=3, num_channel=3):
         super(PolicyNetwork, self).__init__()
 
         #self.input_channels = num_channel
