@@ -334,12 +334,19 @@ class GoGame:
 
     def determine_winner(self, komi):
         self.write_to_sgf(komi)
-        winner_str = subprocess.run(f"gnugo --score estimate --quiet -L {self.num_moves} -l game.sgf", shell=True, capture_output=True, text=True)
+        winner_str = subprocess.run(
+            f"gnugo --score estimate --quiet -L {self.num_moves} -l game.sgf", shell=True, capture_output=True, text=True)
+
         print(winner_str.stdout)
+
+        if winner_str.stderr:
+            raise EnvironmentError
 
         if "Black" in winner_str.stdout:
             return 0
-        else: return 1
+        else:
+            return 1
+
 
 game = GoGame(size=7)
 game.reset()
