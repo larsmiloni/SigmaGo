@@ -1,9 +1,10 @@
 import numpy as np
 import govars
+import subprocess
 
 
 class GoGame:
-    def __init__(self, size: int = 9, board: np.ndarray = None):
+    def __init__(self, size: int = 9):
         self.size = size
         self.shape = (self.size, self.size)
 
@@ -21,17 +22,28 @@ class GoGame:
         All of the channels are 9x9 arrays
         """
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
-
         self.history = []  # To track past board states (for Ko rules)
+        self.sgf_moves = ""
+        self.num_moves = 0
 
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []
+        self.sgf_moves = ""
+        self.num_moves = 0
 
     def step(self, action):
+        if self.get_turn() == 1:
+            color = "B"
+        else:
+            color = "W"
+
+
         self.get_invalid_moves()
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
+
+        self.num_moves += 1
 
         # Used for updating state
         previous_move_was_pass = np.max(self.state[govars.PASS] == 1) == 1
@@ -41,30 +53,32 @@ class GoGame:
             self.state[govars.PASS] = 1
             print("pass")
             self.update_state()  # Switch turns
+            
+            # Add pass move to the SGF moves string
+            self.sgf_moves += f";{color}[]"
 
             # End the game if both players pass consecutively
             if previous_move_was_pass:
                 print("Game over due to consecutive passes.")
-                self.isGameOver = True
-                # self.update_state(previous_move_was_pass)
                 self.state[govars.DONE] = 1
                 return self.get_board(), 0, True
 
             return self.get_board(), 0, False  # No reward for passing, game not over
 
         self.state[govars.PASS] = 0
-
         x, y = action
+
+        # Add the move to the SGF moves string
+        self.sgf_moves += f";{color}[{chr(x + 97)}{chr(y + 97)}]"
+
         self.get_board()[y, x] = self.get_turn()
         captured_stones = self.check_captures(y, x)  # Capture logic
-
         self.history.append(self.get_board().copy())
-        # self.update_state(previous_move_was_pass)
-
         self.update_state()
 
         # Reward is number of captured stones
         return self.get_board(), len(captured_stones), False
+
 
     def get_invalid_moves(self):
         # Get invalid moves
@@ -79,6 +93,8 @@ class GoGame:
     def get_turn(self):
         # Add 1 to keep range between 1 = black and 2 = white for old methods
         return np.max(self.state[govars.TURN]) + 1
+
+    """Updates the layer of the color whose turn it is. Then updates/switches turn."""
 
     def update_state(self):
         if self.get_turn() == 1:
@@ -232,31 +248,6 @@ class GoGame:
 
         return black_dead, white_dead
 
-    def determine_winner(self):
-        """Determine winner considering dead stones."""
-        black_stones, white_stones = self.count_stones()
-
-        # Identify dead stones
-        black_dead, white_dead = self.find_dead_stones()
-
-        # Adjust counts to exclude dead stones
-        black_stones -= len(black_dead)
-        white_stones -= len(white_dead)
-
-        # Calculate territory for black and white
-        black_territory, white_territory = self.count_territories()
-
-        # Total score calculation
-        black_score = black_stones + black_territory
-        white_score = white_stones + white_territory
-
-        if black_score > white_score:
-            return "Black wins", black_score, white_score
-        elif white_score > black_score:
-            return "White wins", black_score, white_score
-        else:
-            return "Draw", black_score, white_score
-
     def count_territories(self):
         visited = set()
         black_territory = 0
@@ -333,112 +324,96 @@ class GoGame:
             moves.append((row, col))
 
         return moves
+    
+    def write_to_sgf(self, komi):
+        sgf_string = f"(;GM[1]SZ[9]KM[{komi+0.5}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
 
+        f = open("game.sgf", "w")
+        f.write(sgf_string)
+        f.close()
 
-"""
-#Example Usage
+    def determine_winner(self, komi):
+        self.write_to_sgf(komi)
+        winner_str = subprocess.run(f"gnugo --score estimate --quiet -L {self.num_moves} -l game.sgf", shell=True, capture_output=True, text=True)
+        print(winner_str.stdout)
+
+        if "Black" in winner_str.stdout:
+            return 0
+        else: return 1
+
 game = GoGame(size=7)
 game.reset()
-print(game.get_legal_actions())
-game.step((0, 2))
+
 game.step((0, 1))
-game.step((0, 3))
-game.step((1, 2))
-game.step((4, 2))
-game.step((1, 3))
-game.step((5, 3))
-game.step((0, 4))
 game.step((0, 2))
+
+game.step((1, 1))
+game.step((1, 2))
+
+game.step((2, 1))
+game.step((2, 2))
+
+game.step((3, 1))
+game.step((3, 2))
+
+game.step((4, 1))
 game.step((3, 3))
-game.step((5, 5))
-game.render_in_terminal()
 
-# Reset game when two consecutive passes
-_, _, game_over = game.step("pass")
-if game_over:
-    game.reset()
+game.step((4, 2))
+game.step((4, 3))
 
-_, _, game_over = game.step(("pass"))
-if game_over:
-    game.reset()
-game.render_in_terminal()
-"""
-
-
-"""
-game = GoGame(size=9)
-game.reset()
-
-# Example SGF moves string
-sgf_moves = ";B[fe];W[de];B[dd];W[cd];B[dc];W[ee];B[fd];W[ff];B[gf];W[ed];B[ec];W[ef];B[ce];W[cc];B[cb];W[bb];B[db];W[be];B[cf];W[gg];B[bf];W[bc];B[ae];W[ad];B[bd];W[fc];B[gc];W[fb];B[gb];W[cg];B[ac];W[hf];B[ge];W[he];B[gd];W[dg];B[hd];W[bg];B[ba];W[ag];B[ie];W[hg];B[if];W[ig];B[id];W[af];B[ab];W[df]"
-
-# Convert SGF to list of moves
-moves = game.sgf_to_coordinates(sgf_moves)
-
-# Print the moves in (player, (row, col)) format
-for move in moves:
-    game.step(move)
-    print(move)
-
-game.render_in_terminal()
-winner = game.determine_winner()
-print("Winner: ", winner)
-
-"""
-
-game = GoGame(size=3)
-game.reset()
-
-game.step((1, 1))
-game.step((0, 0))
-game.step((0, 1))
-game.step((1, 2))
-game.step((1, 0))
-game.step("pass")
-game.step("pass")
-
-
-game.render_in_terminal()
-
-print(game.get_legal_actions())
-
-
-"""
-game.step((5, 0))
-
-game.step((1, 1))
-game.step((5, 1))
-
-game.step((1, 2))
 game.step((5, 2))
-
-game.step((1, 3))
 game.step((5, 3))
 
-game.step((1, 4))
+game.step((6, 2))
+game.step((6, 3))
+
+game.step((0, 5))
 game.step((5, 4))
 
 game.step((1, 5))
 game.step((5, 5))
 
-game.step((1, 6))
+game.step((2, 5))
+game.step((5, 6))
+
+game.step((3, 5))
 game.step((6, 5))
 
-game.step((0, 2))
-game.step((0, 6))
+game.step((3, 6))
+game.step((0, 3))
+
+game.step((1, 6))
+game.step((3, 0))
+
+game.step((1, 0))
+game.step((0, 4))
+
+game.step((5, 0))
+game.step((1, 4))
+
+game.step((5, 1))
+game.step((2, 4))
 
 game.step((6, 0))
-game.step((0, 5))
-"""
-"""
-_, _, game_over = game.step("pass")
-_, _, game_over = game.step("pass")
+game.step((3, 4))
 
-_, _, game_over = game.step("resign")
+game.step(("pass"))
+game.step((4, 4))
 
-print("game over: ", game_over)
+game.step(("pass"))
+game.step((4, 5))
+
+game.step(("pass"))
+
+#print(game.sgf_moves)
+
+#game.write_to_sgf(7.5)
 
 game.render_in_terminal()
-#winner = game.determine_winner()
-#print("Winner: ", winner)
-"""
+print(game.determine_winner(7))
+
+#game.render_in_terminal()
+#game.end_game()
+#print(game.get_legal_actions())
+#print("GROOO:", game.get_group((1, 3)))
