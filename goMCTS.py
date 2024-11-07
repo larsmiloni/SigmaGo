@@ -3,224 +3,20 @@ from typing import List, Dict, Union, Tuple, Type
 import numpy as np
 import copy
 import math
+from MCTSnode import MCTSNode
 import matplotlib.pyplot as plt
 from goEnv import GoGame  # Import GoGame from the appropriate module
 
 
 
 
-class PreTrainedGoNetwork(tf.keras.Model):
-    """
-    A neural network model pre-trained to evaluate board states in the game of Go.
-    The network architecture consists of an input layer, a hidden layer, and an output layer
-    configured to predict the probability of each possible move.
 
-    Attributes:
-        checkpoint_path (str): Path to the checkpoint file for loading pre-trained weights.
-    """
-    def __init__(self, checkpoint_path):
-        super().__init__()
-        self.num_nodes = 1024
-        self.input_layer = tf.keras.layers.Input(shape=(83,))
-        self.hidden_layer = tf.keras.layers.Dense(self.num_nodes, activation='relu')
-        self.output_layer = tf.keras.layers.Dense(83, activation='softmax')
 
-        # Load weights from the checkpoint
-        self.load_weights(checkpoint_path)
-    
-    @tf.function
-    def call(self, inputs):
-        """Forward pass through the network."""
-        x = self.hidden_layer(inputs)
-        return self.output_layer(x)
-    
-    def predict(self, board_state):
-        """
-        Predicts the move probabilities for a given board state.
-        
-        Args:
-            board_state (np.ndarray): Current state of the Go board, as a flattened array.
-
-        Returns:
-            tf.Tensor: Probability distribution over possible moves.
-        """
-        network_input = self.prepare_input(board_state)
-        return self(network_input)[0]
-
-    def prepare_input(self, board_state):
-        """
-        Converts board state to network input format.
-
-        Args:
-            board_state (np.ndarray): Current state of the board, flattened.
-
-        Returns:
-            np.ndarray: Prepared input vector for the network.
-        """
-        input_vector = np.zeros((1, 83))
-        input_vector[0, :81] = board_state.flatten()
-        return input_vector
-    
 def softmax(x):
     e_x = np.exp(x - np.max(x))  # Stability trick for softmax
     return e_x / e_x.sum()
 
-class MCTSNode:
-    """
-    Represents a node in the Monte Carlo Tree Search (MCTS) process, tracking the current state,
-    possible moves, visit count, value, and the parent-child relationships.
 
-    Attributes:
-        game_state (GoGame): Current game state for this node.
-        parent (MCTSNode): Parent node in the MCTS tree.
-        move (tuple): Move that led to this node.
-        prior (float): Prior probability from the policy network.
-    """
-
-
-
-    def __init__(self, game_state, parent=None, move=None, prior=0.0):
-        self.game_state = game_state
-        self.parent = parent
-        self.move = move
-        self.children = {}
-        self.visits = 0
-        self.value = 0
-        self.prior = prior
-        self.is_expanded = False
-        self.rave_value = 0  # Cumulative RAVE value for this node
-        self.rave_visits = 0  # RAVE visit count for this node
-
-
-    
-    def select_child(self, c_puct=math.sqrt(2), rave_weight=0.5, top_n=5):
-        """
-        Selects a child node using softmax sampling over the top-N highest UCB scores.
-        Includes comprehensive error handling and special move handling for Go.
-        
-        Args:
-            c_puct (float): Constant for exploration term scaling.
-            rave_weight (float): Weight for the RAVE bonus term.
-            top_n (int): Number of top children to consider for softmax sampling.
-        
-        Returns:
-            Tuple: The selected move and child node.
-        """
-        # First check if this is a terminal state
-        if self.game_state.isGameOver:
-            return "pass", None
-            
-        # Get legal actions directly from game state
-        legal_actions = self.game_state.get_legal_actions()
-        
-        # Handle special cases first
-        if not legal_actions:
-            return "resign", None
-        if set(legal_actions) == {"pass", "resign"}:
-            return "pass", None
-            
-        # If no children exist but we have legal moves, expand first
-        if not self.children and legal_actions:
-            try:
-                policy = self.game_state.network.predict(self.game_state.board)
-                for move in legal_actions:
-                    if move not in ("pass", "resign"):
-                        move_idx = move[0] * 9 + move[1]
-                        new_state = copy.deepcopy(self.game_state)
-                        new_state.step(move)
-                        self.children[move] = MCTSNode(
-                            new_state,
-                            parent=self,
-                            move=move,
-                            prior=policy[move_idx]
-                        )
-            except AttributeError:
-                # If no network available, use uniform prior
-                prior = 1.0 / len(legal_actions)
-                for move in legal_actions:
-                    if move not in ("pass", "resign"):
-                        new_state = copy.deepcopy(self.game_state)
-                        new_state.step(move)
-                        self.children[move] = MCTSNode(
-                            new_state,
-                            parent=self,
-                            move=move,
-                            prior=prior
-                        )
-        
-        # Now calculate scores for existing children
-        scores = []
-        moves = []
-        children = list(self.children.items())
-        
-        if not children:
-            # If still no children after expansion attempt, fall back to pass
-            return "pass", None
-            
-        for move, child in children:
-            # Safe score calculation with error handling
-            try:
-                q_value = child.value / max(child.visits, 1)  # Avoid division by zero
-                u_value = c_puct * child.prior * math.sqrt(max(self.visits, 1)) / (1 + child.visits)
-                rave_bonus = (rave_weight * (child.rave_value / max(child.rave_visits, 1)) 
-                            if child.rave_visits > 0 else 0)
-                
-                # Add small noise for exploration and to break ties
-                noise = np.random.normal(0, 0.01)
-                score = q_value + u_value + rave_bonus + noise
-                
-                scores.append(score)
-                moves.append((move, child))
-            except Exception as e:
-                print(f"Warning: Error calculating score for move {move}: {e}")
-                continue
-        
-        # Handle case where all score calculations failed
-        if not scores:
-            return "pass", None
-        
-        # Select top-N moves safely
-        top_n = min(top_n, len(scores))  # Adjust top_n if we have fewer moves
-        indices = np.argsort(scores)[-top_n:]
-        top_moves = [moves[i] for i in indices]
-        top_scores = [scores[i] for i in indices]
-        
-        try:
-            # Apply temperature scaling for exploration control
-            temperature = max(0.1, min(1.0, 20.0 / (self.visits + 1)))
-            scaled_scores = [s / temperature for s in top_scores]
-            probs = softmax(scaled_scores)
-            
-            # Verify probabilities sum to 1 and are valid
-            if not np.isclose(sum(probs), 1.0) or np.any(np.isnan(probs)):
-                raise ValueError("Invalid probability distribution")
-                
-            sampled_index = np.random.choice(len(top_moves), p=probs)
-            selected_move, selected_child = top_moves[sampled_index]
-            
-        except Exception as e:
-            print(f"Warning: Error in move selection: {e}")
-            # Fall back to highest scoring move
-            selected_move, selected_child = top_moves[-1]
-        
-        return selected_move, selected_child
-
-
-    def backup(self, reward):
-        """
-        Backup the reward through the tree, updating both standard and RAVE values.
-        """
-        node = self
-        while node is not None:
-            node.visits += 1
-            node.value += reward
-
-            # Update RAVE only if the move matches (or is considered equivalent)
-            if node.parent and node.parent.move == self.move:  # Adjust this condition as needed
-                node.rave_visits += 1
-                node.rave_value += reward
-
-            node = node.parent
 
 
 class MCTS:
@@ -250,7 +46,6 @@ class MCTS:
             Union[Tuple[int, int], str]: The best move found by MCTS.
         """
         # First check if the game is already over
-         # If only pass/resign are legal, choose pass to allow for territory counting
         if game_state.isGameOver:
             return "pass"
         
@@ -258,18 +53,18 @@ class MCTS:
         try:
             legal_actions = game_state.get_legal_actions()
         except:
-            print('Game state:', game_state)
+            print('Game state:', game_state.state)
             print('Game state board:', game_state.board)
             print('Game state isGameOver:', game_state.isGameOver)
             print('Game state determine_winner:', game_state.determine_winner())
             print('Game state get_score:', game_state.get_score())
             print('Game state get_legal_actions:', game_state.get_legal_actions())
 
-        if legal_actions == []:
-            return "resign"
         
-        if set(legal_actions) == {"pass", "resign"}:
-            return "pass"  # Changed from "resign" to "pass"
+        
+        if not legal_actions:
+            return "pass"
+        
         root = MCTSNode(game_state)
     
         for sim in range(self.num_simulations):
@@ -299,16 +94,16 @@ class MCTS:
                 except KeyError:
                     move = "pass"
                 
-                if move != "pass" and move != "resign":
+                if move != "pass":
                     scratch_game.step(move)
             
             # Expansion - add child nodes for all legal moves
             if not node.is_expanded and not scratch_game.isGameOver:
-                policy = self.network.predict(scratch_game.board)
+                policy, _ = self.network.predict(scratch_game.state)
                 valid_moves = scratch_game.get_legal_actions()
                 
                 for move in valid_moves:
-                    if move != "pass" and move != "resign":
+                    if move != "pass":
                         move_idx = move[0] * 9 + move[1]
                         new_game = copy.deepcopy(scratch_game)
             
@@ -331,7 +126,7 @@ class MCTS:
         # Select best move based on visit counts
         visits = {move: child.visits for move, child in root.children.items()}
         if not visits:
-            return "resign"
+            return "pass"
         
         best_move = max(visits.items(), key=lambda x: x[1])[0]
         # print(f"\nSelected move: {chr(65 + best_move[1] if best_move[1] < 8 else 66 + best_move[1])}{9 - best_move[0]}")
@@ -350,9 +145,9 @@ class MCTS:
     
     def evaluate_position(self, game_state: GoGame) -> float:
         """Evaluate non-terminal position using network prediction."""
-        prediction = self.network.predict(game_state.board)
-        # Use the resign probability as a value estimate
-        return 2 * prediction[82] *1  # Scale from [0,1] to [-1,1]
+        prediction, _ = self.network.predict(game_state.state)
+        # Use the pass probability as a value estimate
+        return 2 * prediction[82]  # Scale from [0,1] to [-1,1]
 
 def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=200):
     """
@@ -371,7 +166,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         
         while not game.isGameOver:
             print(f"\nMove {move_count + 1} - {current_player}'s turn")
-            current_state = copy.deepcopy(game.board)
+            current_state = copy.deepcopy(game.state)
             
             # Store current state before move
             game_states.append(current_state)
@@ -379,11 +174,6 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
             # Get move from MCTS
             move = mcts.search(game)
 
-            # Check if game should end
-            if move == "resign" or len(game.get_legal_actions()) == 1:  #resign available
-                print(f"{current_player} resigns - no legal moves available")
-                move = game.step("resign")
-                break
             
             # Make the move and update game state
             if move != "pass":
@@ -475,7 +265,7 @@ def print_board_state(game):
        
 if __name__ == "__main__":
     # Load pre-trained network
-    checkpoint_path = "models/model.keras"
+    checkpoint_path = "models/PN-R3-C64.pt"
     network = PreTrainedGoNetwork(checkpoint_path=checkpoint_path)
     
     # Load weights
@@ -491,7 +281,7 @@ if __name__ == "__main__":
     )
 
     # Save the improved network
-    improved_network.save("models/model_improved.keras")  # Saves full model
+    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL.pt")  # Saves full model
     # except Exception as e:
     #     print("Unable to load pre-trained network:", e)
     #     print("Please ensure the checkpoint file exists and is valid.")
