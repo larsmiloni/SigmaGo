@@ -6,7 +6,7 @@ import math
 from MCTSnode import MCTSNode
 import matplotlib.pyplot as plt
 from goEnv import GoGame  # Import GoGame from the appropriate module
-
+from policy_network import PolicyNetwork
 
 
 
@@ -265,12 +265,12 @@ def print_board_state(game):
        
 if __name__ == "__main__":
     # Load pre-trained network
-    checkpoint_path = "models/PN-R3-C64.pt"
-    network = PreTrainedGoNetwork(checkpoint_path=checkpoint_path)
+    model_path = "models/PN-R3-C64.pt"
+    network = PolicyNetwork(model_path=model_path)
     
     # Load weights
     # try:
-    network.load_weights(checkpoint_path)
+    network.load_weights(model_path)
     print("Loaded pre-trained network.")
 
         # Perform reinforcement learning through self-play
