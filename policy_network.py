@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 import glob
 import os
@@ -36,10 +37,11 @@ class Block(torch.nn.Module):
 
 class PolicyNetwork(torch.nn.Module):
 
-    def __init__(self, alpha, num_res=3, num_channel=3):
+    def __init__(self, alpha, num_res=3, num_channel=3, model_path):
         super(PolicyNetwork, self).__init__()
 
         #self.input_channels = num_channel
+        self.model_path = model_path
         self.state_channel = 7
         self.num_res = num_res
         self.res_block = torch.nn.ModuleDict()
@@ -61,6 +63,37 @@ class PolicyNetwork(torch.nn.Module):
         self.loss = torch.nn.BCELoss()
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
         self.to(self.device)
+
+    def load_weights(self):
+        self.load_weights(self.model_path)
+    
+    def predict(self, board_state) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Predicts the move probabilities for a given board state.
+        
+        Args:
+            board_state (np.ndarray): Current state of the Go board, as a 9x9x6 array.
+
+        Returns:
+            tf.Tensor: Probability distribution over possible moves.
+        """
+        network_input = self.prepare_input(board_state)
+        return self(network_input)[0]
+
+    def prepare_input(self, board_state) -> np.ndarray:
+        """
+        Converts board state to network input format.
+
+        Args:
+            board_state (np.ndarray): Current state of the board, as a 9x9x7 array.
+
+        Returns:
+            np.ndarray: Prepared input vector for the network.
+        """
+        # Ensure the input is in the correct shape (batch_size, height, width, channels)
+        input_vector = np.expand_dims(board_state, axis=0)
+    
+        return input_vector
 
     def define_network(self):
         #policy head
