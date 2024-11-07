@@ -94,8 +94,8 @@ class GoGame:
         # Add 1 to keep range between 1 = black and 2 = white for old methods
         return np.max(self.state[govars.TURN]) + 1
 
-    """Updates the layer of the color whose turn it is. Then updates/switches turn."""
 
+    """Updates the layer of the color whose turn it is. Then updates/switches turn."""
     def update_state(self):
         if self.get_turn() == 1:
             black_channel = (self.get_board() == govars.BLACK_PCS).astype(int)
@@ -109,8 +109,8 @@ class GoGame:
     def get_board(self):
         return self.state[govars.BOARD]
 
-    """Get all legal moves on the board. Pass is always a legal move."""
 
+    """Get all legal moves on the board. Pass is always a legal move."""
     def get_legal_actions(self):
         legal_moves = []
         size = self.size
@@ -139,16 +139,16 @@ class GoGame:
         legal_moves.append("pass")
         return legal_moves
 
-    """Check that move does not repeat a previous board instance."""
 
+    """Check that move does not repeat a previous board instance."""
     def is_ko(self):
         for board in self.history:
             if np.array_equal(board, self.get_board()):
                 return True
         return False
 
-    """Check if placing a stone at the given move results in self-capture."""
 
+    """Check if placing a stone at the given move results in self-capture."""
     def is_self_capture(self, move):
         x, y = move
 
@@ -170,8 +170,8 @@ class GoGame:
         # If no liberties and no opponent captures, it's a self-capture
         return True
 
-    """Get all stones connected to the given intersection (same color)."""
 
+    """Get all stones connected to the given intersection (same color)."""
     def get_group(self, intersection):
         x, y = intersection
         color = self.get_board()[x, y]
@@ -196,8 +196,8 @@ class GoGame:
         dfs(x, y)
         return group
 
-    """Check if an intersection has any empty intersections adjacent to it (has liberties)."""
 
+    """Check if an intersection has any empty intersections adjacent to it (has liberties)."""
     def hasLiberties(self, intersection):
         x, y = intersection
         size = len(self.get_board())
@@ -208,8 +208,8 @@ class GoGame:
 
         return False
 
-    """Check and capture any opponent groups that have no liberties."""
 
+    """Check and capture any opponent groups that have no liberties."""
     def check_captures(self, x, y):
         opponent = 3 - self.get_turn()
         captured_stones = []
@@ -233,10 +233,9 @@ class GoGame:
                                    else ('○' if cell == 1 else '●') for cell in row])
             print(row_print)
 
+
+    """Convert SGF move notation to a list of (row, col) coordinates."""
     def sgf_to_coordinates(self, sgf_moves):
-        """
-        Convert SGF move notation to a list of (row, col) coordinates.
-        """
         moves = []
         for entry in sgf_moves.split(';'):
             if not entry:
@@ -255,12 +254,14 @@ class GoGame:
         return moves
     
     def write_to_sgf(self, komi):
-        sgf_string = f"(;GM[1]SZ[9]KM[{komi+0.5}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
+        sgf_string = f"(;GM[1]SZ[9]KM[{komi-0.5}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
 
         f = open("game.sgf", "w")
         f.write(sgf_string)
         f.close()
 
+
+    """Returns 0 if black wins, and  if white wins"""
     def determine_winner(self, komi):
         self.write_to_sgf(komi)
         winner_str = subprocess.run(
@@ -347,7 +348,7 @@ game.step(("pass"))
 #game.write_to_sgf(7.5)
 
 game.render_in_terminal()
-print(game.determine_winner(7))
+print(game.determine_winner(7.5))
 
 #game.render_in_terminal()
 #game.end_game()
