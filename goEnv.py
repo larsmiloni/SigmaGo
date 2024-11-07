@@ -253,8 +253,8 @@ class GoGame:
 
         return moves
     
-    def write_to_sgf(self, komi):
-        sgf_string = f"(;GM[1]SZ[9]KM[{komi-0.5}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
+    def write_to_sgf(self):
+        sgf_string = f"(;GM[1]SZ[9]KM[{int(govars.KOMI - 0.5)}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
 
         f = open("game.sgf", "w")
         f.write(sgf_string)
@@ -262,8 +262,8 @@ class GoGame:
 
 
     """Returns 0 if black wins, and  if white wins"""
-    def determine_winner(self, komi):
-        self.write_to_sgf(komi)
+    def determine_winner(self):
+        self.write_to_sgf()
         winner_str = subprocess.run(
             f"gnugo --score estimate --quiet -L {self.num_moves} -l game.sgf", shell=True, capture_output=True, text=True)
 
@@ -348,7 +348,7 @@ game.step(("pass"))
 #game.write_to_sgf(7.5)
 
 game.render_in_terminal()
-print(game.determine_winner(7.5))
+print(game.determine_winner())
 
 #game.render_in_terminal()
 #game.end_game()

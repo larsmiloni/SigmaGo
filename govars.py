@@ -2,6 +2,7 @@ ANYONE = None
 NOONE = 0
 BLACK_PCS = 1
 WHITE_PCS = 2
+KOMI = 7.5
 
 # Layers
 BLACK = 0
