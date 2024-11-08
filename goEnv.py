@@ -24,13 +24,11 @@ class GoGame:
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []  # To track past board states (for Ko rules)
         self.sgf_moves = ""
-        self.num_moves = 0
 
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []
         self.sgf_moves = ""
-        self.num_moves = 0
 
     def step(self, action):
         if self.get_turn() == 1:
@@ -42,9 +40,7 @@ class GoGame:
         self.get_invalid_moves()
         if action not in self.get_legal_actions():
             raise ValueError("Illegal move.")
-
-        self.num_moves += 1
-
+        
         # Used for updating state
         previous_move_was_pass = np.max(self.state[govars.PASS] == 1) == 1
 
@@ -242,19 +238,23 @@ class GoGame:
                 continue
             # Determine player and move
             player = entry[0]  # 'B' for Black or 'W' for White
-            move = entry[2:4]  # Get the two-letter move, e.g., 'fe'
+            if entry[1:3] == "[]":
+                move = "pass"
+            else:
+                move = entry[2:4]  # Get the two-letter move, e.g., 'fe'
 
-            # Convert letters to board coordinates
-            row = ord(move[0]) - ord('a')  # Vertical position (y-coordinate)
-            col = ord(move[1]) - ord('a')  # Horizontal position (x-coordinate)
+                # Convert letters to board coordinates
+                row = ord(move[0]) - ord('a')  # Vertical position (y-coordinate)
+                col = ord(move[1]) - ord('a')  # Horizontal position (x-coordinate)
 
-            # Append to moves list as (player, (row, col))
-            moves.append((row, col))
+                move = (row, col)
+
+            moves.append(move)
 
         return moves
     
-    def write_to_sgf(self):
-        sgf_string = f"(;GM[1]SZ[9]KM[{int(govars.KOMI - 0.5)}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
+    def write_to_sgf(self, komi):
+        sgf_string = f"(;GM[1]SZ[9]KM[{komi}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
 
         f = open("game.sgf", "w")
         f.write(sgf_string)
@@ -262,22 +262,24 @@ class GoGame:
 
 
     """Returns 0 if black wins, and  if white wins"""
-    def determine_winner(self):
-        self.write_to_sgf()
+    def determine_winner(self, komi = govars.KOMI):
+        self.write_to_sgf(komi)
         winner_str = subprocess.run(
-            f"gnugo --score estimate --quiet -L {self.num_moves} -l game.sgf", shell=True, capture_output=True, text=True)
+            f"gnugo --score aftermath --quiet -l game.sgf", shell=True, capture_output=True, text=True)
 
+        print(winner_str.stderr)
         print(winner_str.stdout)
 
-        if winner_str.stderr:
-            raise EnvironmentError
+        if "error" in winner_str.stderr.lower():
+            print("Error occurred while running gnugo:", winner_str.stderr)
+            raise EnvironmentError("GnuGo encountered an error: " + winner_str.stderr)
 
         if "Black" in winner_str.stdout:
             return 0
         else:
             return 1
 
-
+"""
 game = GoGame(size=7)
 game.reset()
 
@@ -343,14 +345,28 @@ game.step((4, 5))
 
 game.step(("pass"))
 
-#print(game.sgf_moves)
+game.render_in_terminal()
 
-#game.write_to_sgf(7.5)
+w = game.determine_winner()
+print(w)
+"""
+
+game = GoGame(size=9)
+game.reset()
+
+moves = game.sgf_to_coordinates(";B[fe];W[cf];B[de];W[ce];B[df];W[cc];B[dd];W[cg];B[dc];W[cb];B[cd];W[bd];B[be];W[bc];B[dg];W[ch];B[dh];W[he];B[hc];W[hd];B[gc];W[gh];B[bf];W[bg];B[ci];W[ae];B[hg];W[gg];B[hh];W[hf];B[id];W[ie];B[fi];W[ih];B[ig];W[hi];B[ii];W[fh];B[ei];W[ih];B[bh];W[af];B[ii];W[gd];B[gi];W[fc];B[fb];W[eb];B[ec];W[fd];B[fa];W[db];B[ha];W[ff];B[ee];W[eg];B[ge];W[gf];B[eh];W[ef];B[ic]")
+
+for move in moves:
+    game.step(move)
 
 game.render_in_terminal()
-print(game.determine_winner())
+w = game.determine_winner(7)
+print(w)
 
-#game.render_in_terminal()
-#game.end_game()
-#print(game.get_legal_actions())
-#print("GROOO:", game.get_group((1, 3)))
+
+"""
+(;GM[1]SZ[9]KM[7]RU[Chinese]
+PB[idontca1 (2412)]
+PW[3377 (2216)]
+;B[fe];W[cf];B[de];W[ce];B[df];W[cc];B[dd];W[cg];B[dc];W[cb];B[cd];W[bd];B[be];W[bc];B[dg];W[ch];B[dh];W[he];B[hc];W[hd];B[gc];W[gh];B[bf];W[bg];B[ci];W[ae];B[hg];W[gg];B[hh];W[hf];B[id];W[ie];B[fi];W[ih];B[ig];W[hi];B[ii];W[fh];B[ei];W[ih];B[bh];W[af];B[ii];W[gd];B[gi];W[fc];B[fb];W[eb];B[ec];W[fd];B[fa];W[db];B[ha];W[ff];B[ee];W[eg];B[ge];W[gf];B[eh];W[ef];B[ic])
+"""
