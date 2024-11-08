@@ -6,6 +6,7 @@ import pickle
 import torch
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from torch import nn
 
 class Block(torch.nn.Module):
 
@@ -19,8 +20,9 @@ class Block(torch.nn.Module):
         self.conv2 = torch.nn.Conv2d(num_channel, num_channel, kernel_size=2)
         self.batch_norm2 = torch.nn.BatchNorm2d(num_channel)
         self.relu2 = torch.nn.ReLU()
-
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
+        print("Block Created")
+        self.device = torch.device('cuda:0' if not torch.cuda.is_available() else 'cpu:0')
+        print("Using device:", self.device)
         self.to(self.device)
 
     def forward(self, x):
@@ -39,35 +41,53 @@ class PolicyNetwork(torch.nn.Module):
 
     def __init__(self, model_path, alpha=0.01, num_res=3, num_channel=3):
         super(PolicyNetwork, self).__init__()
-
+        print("Policy Network Created 1")
         #self.input_channels = num_channel
         self.model_path = model_path
+        print('Model path:', self.model_path)
         self.state_channel = 7
         self.num_res = num_res
         self.res_block = torch.nn.ModuleDict()
         self.num_channel = num_channel
         self.historical_loss = []
-
+        
         # network metrics
         self.training_losses = []
         self.test_losses = []
         self.training_accuracies = []
         self.test_accuracies = []
         self.test_iteration = []
-
+        
         self.model_name = "VN-R" + str(self.num_res) + "-C" + str(self.num_channel)
-
+        
         self.define_network()
+        try:
+            if self.model_path:
+                print("Loading model from:", self.model_path)
+                self.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        except Exception as e:
+            print(e)
+        
+        
         # define optimizer
         self.optimizer = torch.optim.Adam(lr=alpha, params=self.parameters())
+        
         self.loss = torch.nn.BCELoss()
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
+        
+        self.device = torch.device('cuda:0' if not torch.cuda.is_available() else 'cpu:0')
+        print("Using device pn:", self.device)
         self.to(self.device)
 
-    def load_weights(self):
-        self.load_weights(self.model_path)
+    # def load_weights(self, model_path):
+
+        # if self.device != 'cpu:0':
+            
+        # self.load_weights(model_path)
+            
+        # else:
+        #     self.load_state_dict(torch.load(self.model_path, map_location=self.device))
     
-    def predict(self, board_state) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, board_state):
         """
         Predicts the move probabilities for a given board state.
         
@@ -80,7 +100,7 @@ class PolicyNetwork(torch.nn.Module):
         network_input = self.prepare_input(board_state)
         return self(network_input)[0]
 
-    def prepare_input(self, board_state) -> np.ndarray:
+    def prepare_input(self, board_state):
         """
         Converts board state to network input format.
 
@@ -96,48 +116,52 @@ class PolicyNetwork(torch.nn.Module):
         return input_vector
 
     def define_network(self):
-        #policy head
-        self.policy_conv = torch.nn.Conv2d(self.num_channel, 2, kernel_size=1)
-        self.policy_batch_norm = torch.nn.BatchNorm2d(2)
-        self.relu = torch.nn.ReLU()
-        self.policy_fc1 = torch.nn.Linear(2*9*9, 128)
-        self.policy_fc2 = torch.nn.Linear(128, 82)
-        self.softmax = torch.nn.Softmax(dim=1)
-        self.sigmoid = torch.nn.Sigmoid()
+        print("Defining policy head...")
+        # Policy head
+        self.policy_conv = nn.Conv2d(self.num_channel, 2, kernel_size=1)
+        self.policy_batch_norm = nn.BatchNorm2d(2)
+        self.policy_relu = nn.ReLU()  # Separate ReLU for policy head
+        self.policy_fc1 = nn.Linear(2 * 9 * 9, 128)
+        self.policy_fc2 = nn.Linear(128, 82)
+        self.softmax = nn.Softmax(dim=1)
+        self.sigmoid = nn.Sigmoid()
+        print("Policy head defined.")
 
-        # network start
-        #self.pad = torch.nn.Pad(1)
-        self.conv = torch.nn.Conv2d(self.state_channel, self.num_channel, kernel_size=1)
-        self.batch_norm = torch.nn.BatchNorm2d(self.num_channel)
-        self.relu = torch.nn.ReLU()
+        print("Defining network start...")
+        # Network start
+        self.conv = nn.Conv2d(self.state_channel, self.num_channel, kernel_size=1)
+        self.batch_norm = nn.BatchNorm2d(self.num_channel)
+        self.network_relu = nn.ReLU()  # Separate ReLU for network start
+        print("Network start defined.")
 
-        for i in range(1, self.num_res+1):
-            self.res_block["r"+str(i)] = Block(self.num_channel)
+        print("Defining residual blocks...")
+        for i in range(1, self.num_res + 1):
+            self.res_block["r" + str(i)] = Block(self.num_channel)
+        print("Residual blocks defined.")
 
     def forward(self, x):
         out = torch.Tensor(x).float().to(self.device)
-
-        #out = self.pad(out)
         out = self.conv(out)
         out = self.batch_norm(out)
-        out = self.relu(out)
+        out = self.network_relu(out)  # Use network ReLU
 
-        for i in range(1, self.num_res+1):
-            out = self.res_block["r"+str(i)](out)
+        for i in range(1, self.num_res + 1):
+            out = self.res_block["r" + str(i)](out)
 
-        # policy head
+        # Policy head
         out = self.policy_conv(out)
         out = self.policy_batch_norm(out)
-        out = self.relu(out)
-        out = out.reshape(-1, 2*9*9)
+        out = self.policy_relu(out)  # Use policy ReLU
+        out = out.reshape(-1, 2 * 9 * 9)
         out = self.policy_fc1(out)
-        out = self.relu(out)
+        out = self.policy_relu(out)  # Use policy ReLU
         out = self.policy_fc2(out)
         out = self.softmax(out)
         return out
 
 
     def optimize(self, x, y, x_t, y_t, batch_size=16, iterations=10, alpha=0.1, test_interval=1000, save=False):
+        print("Optimizing")
         x_t = x_t.float().to(self.device)
         y_t = y_t.float().to(self.device)
 
@@ -262,6 +286,9 @@ class PolicyNetwork(torch.nn.Module):
 
     def save(self):
         torch.save(self.state_dict(), self.model_name+".pt")
+        
+    def save(self, path):
+        torch.save(self.state_dict(), path)
 
 
 def load_features_labels(test_size: int):

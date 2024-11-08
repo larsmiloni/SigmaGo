@@ -2,6 +2,7 @@ import copy
 import math
 import numpy as np
 from scipy.special import softmax
+import torch
 
 class MCTSNode:
     """
@@ -44,10 +45,6 @@ class MCTSNode:
         Returns:
             Tuple: The selected move and child node.
         """
-        # First check if this is a terminal state
-        if self.game_state.isGameOver:
-            return "pass", None
-            
         # Get legal actions directly from game state
         legal_actions = self.game_state.get_legal_actions()
         
@@ -60,17 +57,19 @@ class MCTSNode:
         # If no children exist but we have legal moves, expand first
         if not self.children and legal_actions:
             try:
-                policy, _ = self.game_state.network.predict(self.game_state.state)
+                policy = self.game_state.network.predict(self.game_state.state)
                 for move in legal_actions:
                     if move not in ("pass"):
                         move_idx = move[0] * 9 + move[1]
                         new_state = copy.deepcopy(self.game_state)
                         new_state.step(move)
+                        # Ensure policy value is detached if it's a tensor
+                        prior = policy[move_idx].detach().item() if torch.is_tensor(policy) else policy[move_idx]
                         self.children[move] = MCTSNode(
                             new_state,
                             parent=self,
                             move=move,
-                            prior=policy[move_idx]
+                            prior=prior
                         )
             except AttributeError:
                 # If no network available, use uniform prior
@@ -105,7 +104,7 @@ class MCTSNode:
                 
                 # Add small noise for exploration and to break ties
                 noise = np.random.normal(0, 0.01)
-                score = q_value + u_value + rave_bonus + noise
+                score = float(q_value + u_value + rave_bonus + noise)  # Convert to float explicitly
                 
                 scores.append(score)
                 moves.append((move, child))
@@ -117,12 +116,15 @@ class MCTSNode:
         if not scores:
             return "pass", None
         
+        # Convert scores to numpy array safely
+        scores = np.array(scores, dtype=np.float32)
+        
         # Select top-N moves safely
-        top_n = min(top_n, len(scores))  # Adjust top_n if we have fewer moves
+        top_n = min(top_n, len(scores))
         indices = np.argsort(scores)[-top_n:]
         top_moves = [moves[i] for i in indices]
         top_scores = [scores[i] for i in indices]
-        
+
         try:
             # Apply temperature scaling for exploration control
             temperature = max(0.1, min(1.0, 20.0 / (self.visits + 1)))

@@ -7,6 +7,7 @@ from MCTSnode import MCTSNode
 import matplotlib.pyplot as plt
 from goEnv import GoGame  # Import GoGame from the appropriate module
 from policy_network import PolicyNetwork
+import govars
 
 
 
@@ -46,7 +47,8 @@ class MCTS:
             Union[Tuple[int, int], str]: The best move found by MCTS.
         """
         # First check if the game is already over
-        if game_state.isGameOver:
+        if game_state.state[govars.DONE].any():
+            print("Game is already over.")
             return "pass"
         
         # Get legal actions before starting search
@@ -55,13 +57,13 @@ class MCTS:
         except:
             print('Game state:', game_state.state)
             print('Game state board:', game_state.board)
-            print('Game state isGameOver:', game_state.isGameOver)
+            
             print('Game state determine_winner:', game_state.determine_winner())
             print('Game state get_score:', game_state.get_score())
             print('Game state get_legal_actions:', game_state.get_legal_actions())
 
         
-        
+        print('Legal actions:', legal_actions)
         if not legal_actions:
             return "pass"
         
@@ -76,7 +78,7 @@ class MCTS:
             # print('Is scratch game over:', scratch_game.isGameOver)
             # print('Is node expanded:', node.is_expanded)
             # Selection - use UCB to select moves until reaching a leaf
-            while node.is_expanded and not scratch_game.isGameOver:
+            while node.is_expanded and not scratch_game.state[govars.DONE].any():
                 try:
                     move, node = node.select_child(self.c_puct)
 
@@ -98,8 +100,10 @@ class MCTS:
                     scratch_game.step(move)
             
             # Expansion - add child nodes for all legal moves
-            if not node.is_expanded and not scratch_game.isGameOver:
-                policy, _ = self.network.predict(scratch_game.state)
+            if not node.is_expanded and not scratch_game.state[govars.DONE].any():
+                # Fixed: Properly unpack both policy and value predictions
+                #Might need to change this to unpack the policy and value predictions
+                policy_pred = self.network.predict(scratch_game.state)
                 valid_moves = scratch_game.get_legal_actions()
                 
                 for move in valid_moves:
@@ -112,16 +116,16 @@ class MCTS:
                             new_game, 
                             parent=node,
                             move=move,
-                            prior=policy[move_idx]
+                            prior=policy_pred[move_idx]
                         )
                 node.is_expanded = True
-            
-            # Evaluation
-            value = (self.evaluate_terminal(scratch_game) if scratch_game.isGameOver 
-                    else self.evaluate_position(scratch_game))
-            
-            # Backup
-            node.backup(value)
+        
+        # Evaluation
+        value = (self.evaluate_terminal(scratch_game) if scratch_game.state[govars.DONE].any()
+                else self.evaluate_position(scratch_game))
+        
+        # Backup
+        node.backup(value)
         
         # Select best move based on visit counts
         visits = {move: child.visits for move, child in root.children.items()}
@@ -141,13 +145,13 @@ class MCTS:
         """Evaluate terminal game state."""
         winner = game_state.determine_winner()
     
-        return 1 if winner == "black" else -1
+        return winner
     
     def evaluate_position(self, game_state: GoGame) -> float:
         """Evaluate non-terminal position using network prediction."""
-        prediction, _ = self.network.predict(game_state.state)
+        prediction = self.network.predict(game_state.state)
         # Use the pass probability as a value estimate
-        return 2 * prediction[82]  # Scale from [0,1] to [-1,1]
+        return 2 * prediction[81]  # Scale from [0,1] to [-1,1]
 
 def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=200):
     """
@@ -164,7 +168,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         move_count = 0
         current_player = 'black'  # Track current player
         
-        while not game.isGameOver:
+        while not game.state[govars.DONE].any():
             print(f"\nMove {move_count + 1} - {current_player}'s turn")
             current_state = copy.deepcopy(game.state)
             
@@ -209,12 +213,12 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         print(f"Winner: {winner}")
         
         # Add game data to training set
-        outcome = 1 if winner == 'black' else -1
+       
         for state, policy in zip(game_states, mcts_policies):
             training_data.append({
                 'state': state,
                 'policy': policy,
-                'value': outcome
+                'value': winner
             })
         
         # Update network periodically
@@ -266,14 +270,25 @@ def print_board_state(game):
 if __name__ == "__main__":
     # Load pre-trained network
     model_path = "models/PN-R3-C64.pt"
-    network = PolicyNetwork(model_path=model_path)
+    print("Initializing network...")
+    try:
+        network = PolicyNetwork(model_path=model_path)
+    except Exception as e:
+        print("Unable to load pre-trained network:", e)
+        print("Please ensure the checkpoint file exists and is valid.")
     
-    # Load weights
+    
+    # # Load weights
+    # # try:
+    # print("Loading pre-trained network...")
     # try:
-    network.load_weights(model_path)
-    print("Loaded pre-trained network.")
+    #     network.load_weights(model_path=model_path)
+    #     print("Loaded pre-trained network.")
+    # except:
+    #     print("Unable to load pre-trained network.", e)
 
         # Perform reinforcement learning through self-play
+    print("Starting self-play training...")
     improved_network = self_play_training(
         network=network,
         num_games=1,
