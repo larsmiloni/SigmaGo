@@ -7,3 +7,4 @@ trainResults/
 checkpoints/
 dataset_memmap.npy
 labelset_memmap.npy
+tempGame.sgf

@@ -256,7 +256,7 @@ class GoGame:
     def write_to_sgf(self, komi):
         sgf_string = f"(;GM[1]SZ[9]KM[{komi}]RU[Chinese]\nPB[player1 (1)]\nPW[player2 (1)]\n{self.sgf_moves})"
 
-        f = open("game.sgf", "w")
+        f = open("tempGame.sgf", "w")
         f.write(sgf_string)
         f.close()
 
@@ -265,7 +265,7 @@ class GoGame:
     def determine_winner(self, komi = govars.KOMI):
         self.write_to_sgf(komi)
         winner_str = subprocess.run(
-            f"gnugo --score aftermath --quiet -l game.sgf", shell=True, capture_output=True, text=True)
+            f"gnugo --score aftermath --quiet -l tempGame.sgf", shell=True, capture_output=True, text=True)
 
         print(winner_str.stderr)
         print(winner_str.stdout)
