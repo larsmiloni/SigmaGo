@@ -260,12 +260,11 @@ class GoGame:
         f.write(sgf_string)
         f.close()
 
-
     """Returns 0 if black wins, and  if white wins"""
     def determine_winner(self, komi = govars.KOMI):
         self.write_to_sgf(komi)
         winner_str = subprocess.run(
-            f"gnugo --score aftermath --quiet -l tempGame.sgf", shell=True, capture_output=True, text=True)
+            f"gnugo --chinese-rules --score aftermath --quiet -l tempGame.sgf", shell=True, capture_output=True, text=True)
 
         print(winner_str.stderr)
         print(winner_str.stdout)
@@ -362,7 +361,6 @@ for move in moves:
 game.render_in_terminal()
 w = game.determine_winner(7)
 print(w)
-
 
 """
 (;GM[1]SZ[9]KM[7]RU[Chinese]
