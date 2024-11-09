@@ -11,20 +11,7 @@ import govars
 
 
 
-# Enable GPU memory growth to prevent TensorFlow from allocating all GPU memory at once
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        print(f"Found {len(gpus)} GPU(s). GPU memory growth enabled.")
-    except RuntimeError as e:
-        print(f"GPU configuration error: {e}")
-else:
-    print("No GPUs found. Running on CPU.")
 
-# Enable mixed precision training for better GPU performance
-tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 def softmax(x):
     e_x = np.exp(x - np.max(x))  # Stability trick for softmax
@@ -43,80 +30,102 @@ class MCTS:
         num_simulations (int): Number of MCTS simulations per search.
         c_puct (float): Exploration-exploitation constant.
     """
-    def __init__(self, network, num_simulations=50, c_puct=math.sqrt(2), batch_size=32):
+    def __init__(self, network, num_simulations=50, c_puct=math.sqrt(2)):
         self.network = network
         self.num_simulations = num_simulations
         self.c_puct = c_puct
-        self.batch_size = batch_size
-        # Enable XLA compilation for faster execution
-        if tf.test.is_built_with_cuda():
-            self.network.compile(jit_compile=True)
-
-    @tf.function(experimental_relax_shapes=True)
-    def predict_batch(self, states):
-        """GPU-optimized batch prediction"""
-        return self.network(states, training=False)
 
     def search(self, game_state: GoGame) -> Union[Tuple[int, int], str]:
+        """
+        Conducts a full search to select the best move for the current game state.
+        Now includes board visualization after each move.
+
+        Args:
+            game_state (GoGame): The current game state to analyze.
+
+        Returns:
+            Union[Tuple[int, int], str]: The best move found by MCTS.
+        """
+        # First check if the game is already over
         if game_state.state[govars.DONE].any():
             print("Game is already over.")
             return "pass"
         
+        # Get legal actions before starting search
         try:
             legal_actions = game_state.get_legal_actions()
         except:
-            print('Error getting legal actions')
-            return "pass"
+            print('Game state:', game_state.state)
+            print('Game state board:', game_state.board)
+            
+            print('Game state determine_winner:', game_state.determine_winner())
+            print('Game state get_score:', game_state.get_score())
+            print('Game state get_legal_actions:', game_state.get_legal_actions())
+
         
+        print('Legal actions:', legal_actions)
         if not legal_actions:
             return "pass"
         
         root = MCTSNode(game_state)
-        
-        # Batch states for GPU processing
-        states_batch = []
-        nodes_batch = []
-        
+    
         for sim in range(self.num_simulations):
             if sim % 50 == 0:
                 print(f"Running simulation {sim}/{self.num_simulations}")
-            
+                
             node = root
             scratch_game = copy.deepcopy(game_state)
-            
-            # Selection phase
+            # print('Is scratch game over:', scratch_game.isGameOver)
+            # print('Is node expanded:', node.is_expanded)
+            # Selection - use UCB to select moves until reaching a leaf
             while node.is_expanded and not scratch_game.state[govars.DONE].any():
                 try:
                     move, node = node.select_child(self.c_puct)
+
+                       # Add a check in case `node` is None
                     if node is None:
-                        return "pass"
-                    
-                    if move != "pass":
-                        scratch_game.step(move)
+                        print("Warning: No valid child node selected, defaulting to 'pass'.")
+                        return "pass"  # Exit the selection loop since no valid child is found
+
+
+                    # Check if the move is valid in the children dictionary
+                    if move in node.children:
+                        node = node.children[move]
+                    else:
+                        move = "pass"
                 except KeyError:
                     move = "pass"
-            
-            # Expansion and evaluation phase
-            if not node.is_expanded and not scratch_game.state[govars.DONE].any():
-                states_batch.append(scratch_game.state)
-                nodes_batch.append((node, scratch_game))
                 
-                # Process batch when it reaches batch_size
-                if len(states_batch) >= self.batch_size:
-                    self._process_batch(states_batch, nodes_batch)
-                    states_batch = []
-                    nodes_batch = []
+                if move != "pass":
+                    scratch_game.step(move)
             
-            # Evaluation for terminal states
-            value = (self.evaluate_terminal(scratch_game) if scratch_game.state[govars.DONE].any()
-                    else self.evaluate_position(scratch_game))
+            # Expansion - add child nodes for all legal moves
+            if not node.is_expanded and not scratch_game.state[govars.DONE].any():
+                # Fixed: Properly unpack both policy and value predictions
+                #Might need to change this to unpack the policy and value predictions
+                policy_pred = self.network.predict(scratch_game.state)
+                valid_moves = scratch_game.get_legal_actions()
+                
+                for move in valid_moves:
+                    if move != "pass":
+                        move_idx = move[0] * 9 + move[1]
+                        new_game = copy.deepcopy(scratch_game)
             
-            # Backup
-            node.backup(value)
+                        new_game.step(move)
+                        node.children[move] = MCTSNode(
+                            new_game, 
+                            parent=node,
+                            move=move,
+                            prior=policy_pred[move_idx]
+                        )
+                node.is_expanded = True
         
-        # Process remaining states
-        if states_batch:
-            self._process_batch(states_batch, nodes_batch)
+        # Evaluation
+        value = (self.evaluate_terminal(scratch_game) if scratch_game.state[govars.DONE].any()
+                else self.evaluate_position(scratch_game))
+        
+        # Backup
+        node.backup(value)
         
         # Select best move based on visit counts
         visits = {move: child.visits for move, child in root.children.items()}
@@ -124,56 +133,25 @@ class MCTS:
             return "pass"
         
         best_move = max(visits.items(), key=lambda x: x[1])[0]
+        # print(f"\nSelected move: {chr(65 + best_move[1] if best_move[1] < 8 else 66 + best_move[1])}{9 - best_move[0]}")
         print(f"Visit counts for considered moves:")
         for move, visits in sorted(visits.items(), key=lambda x: x[1], reverse=True)[:5]:
             print(f"- {chr(65 + move[1] if move[1] < 8 else 66 + move[1])}{9 - move[0]}: {visits} visits")
         
         return best_move
-
-    def _process_batch(self, states_batch, nodes_batch):
-        """Process a batch of states on GPU with expanded node handling"""
-        if not states_batch:
-            return
-            
-        # Convert to tensor for GPU processing
-        states_tensor = tf.convert_to_tensor(states_batch)
-        
-        # Batch predict on GPU
-        with tf.device('/GPU:0'):
-            policy_preds = self.predict_batch(states_tensor)
-        
-        # Expand nodes with predictions
-        for (node, scratch_game), policy_pred in zip(nodes_batch, policy_preds):
-            valid_moves = scratch_game.get_legal_actions()
-            
-            for move in valid_moves:
-                if move != "pass":
-                    move_idx = move[0] * 9 + move[1]
-                    new_game = copy.deepcopy(scratch_game)
-                    new_game.step(move)
-                    node.children[move] = MCTSNode(
-                        new_game,
-                        parent=node,
-                        move=move,
-                        prior=policy_pred[move_idx]
-                    )
-            node.is_expanded = True
-            
-            # Evaluate position for the newly expanded node
-            value = self.evaluate_position(scratch_game)
-            node.backup(value)
-
+    
+    
     def evaluate_terminal(self, game_state: GoGame) -> int:
         """Evaluate terminal game state."""
         winner = game_state.determine_winner()
+    
         return winner
     
     def evaluate_position(self, game_state: GoGame) -> float:
-        """GPU-optimized position evaluation"""
-        with tf.device('/GPU:0'):
-            state_tensor = tf.convert_to_tensor([game_state.state])
-            prediction = self.predict_batch(state_tensor)[0]
-            return 2 * prediction[81]  # Scale from [0,1] to [-1,1]
+        """Evaluate non-terminal position using network prediction."""
+        prediction = self.network.predict(game_state.state)
+        # Use the pass probability as a value estimate
+        return 2 * prediction[81]  # Scale from [0,1] to [-1,1]
 
 def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=200):
     """
@@ -319,9 +297,18 @@ if __name__ == "__main__":
 
     # Save the improved network
     improved_network.save("models/PN_R3_C64_IMPROVED_MODEL.pt")  # Saves full model
+    
+    network = PolicyNetwork(model_path="models/PN_R3_C64_IMPROVED_MODEL.pt")
+    
+    improved_network_delux = self_play_training(
+        network=network,
+        num_games=20,
+        mcts_simulations=200
+    )
+
+    # Save the improved network
+    improved_network_delux.save("models/PN_R3_C64_IMPROVED_MODEL.pt")  # Saves full model
+    
     # except Exception as e:
     #     print("Unable to load pre-trained network:", e)
     #     print("Please ensure the checkpoint file exists and is valid.")
-   
-    
-   
