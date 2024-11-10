@@ -158,6 +158,27 @@ class PolicyNetwork(torch.nn.Module):
         out = self.policy_fc2(out)
         out = self.softmax(out)
         return out
+    
+    def train_on_batch(self, batch_states, batch_policies, batch_values):
+        """
+        Trains the network on a single batch of data.
+        
+        Args:
+            batch_states (torch.Tensor): Batch of board states.
+            batch_policies (torch.Tensor): Batch of policy vectors.
+            batch_values (torch.Tensor): Batch of value vectors.
+        
+        Returns:
+            float: The loss value for the batch.
+        """
+        self.optimizer.zero_grad()
+        policy_preds, value_preds = self(batch_states)
+        policy_loss = self.loss_fn(policy_preds, batch_policies)
+        value_loss = self.loss_fn(value_preds.squeeze(), batch_values)
+        loss = policy_loss + value_loss
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
 
 
     def optimize(self, x, y, x_t, y_t, batch_size=16, iterations=10, alpha=0.1, test_interval=1000, save=False):
@@ -289,7 +310,22 @@ class PolicyNetwork(torch.nn.Module):
         
     def save(self, path):
         torch.save(self.state_dict(), path)
-
+    
+    def select_move(self, game_state) -> Tuple[int, int]:
+        """
+        Selects a move based on the predicted policy.
+        
+        Args:
+            game_state (GoGame): Current state of the game.
+        
+        Returns:
+            tuple: Selected move as (row, col) or "pass"
+        """
+        policy = self.predict(game_state.state).detach().cpu().numpy()
+        legal_moves = game_state.get_legal_actions()
+        legal_move_probs = [(move, policy[move[0] * 9 + move[1]]) for move in legal_moves if move != "pass"]
+        legal_move_probs.sort(key=lambda x: x[1], reverse=True)
+        return legal_move_probs[0][0] if legal_move_probs else "pass"
 
 def load_features_labels(test_size: int):
 
