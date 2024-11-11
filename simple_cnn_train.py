@@ -9,7 +9,7 @@ import numpy as np
 import govars
 
 # Hyperparameters
-num_epochs = 1_000
+num_epochs = 100_000
 batch_size = 128
 learning_rate = 1e-3
 
