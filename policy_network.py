@@ -323,9 +323,28 @@ class PolicyNetwork(torch.nn.Module):
         """
         policy = self.predict(game_state.state).detach().cpu().numpy()
         legal_moves = game_state.get_legal_actions()
-        legal_move_probs = [(move, policy[move[0] * 9 + move[1]]) for move in legal_moves if move != "pass"]
+        
+        # Initialize list for all legal moves including pass
+        legal_move_probs = []
+        
+        # Handle regular moves
+        for move in legal_moves:
+            if move == "pass":
+                # Assuming the last element in policy is for pass
+                pass_prob = policy[-1]
+                legal_move_probs.append((move, pass_prob))
+            else:
+                # Regular board position moves
+                move_prob = policy[move[0] * 9 + move[1]]
+                legal_move_probs.append((move, move_prob))
+        
+        # Sort by probability
         legal_move_probs.sort(key=lambda x: x[1], reverse=True)
-        return legal_move_probs[0][0] if legal_move_probs else "pass"
+        
+        if not legal_move_probs:
+            return "pass"
+        
+        return legal_move_probs[0][0]
 
 def load_features_labels(test_size: int):
 
