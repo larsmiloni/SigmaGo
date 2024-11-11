@@ -116,10 +116,10 @@ class MCTSNode:
         if not scores:
             return "pass", None
         
-        # Convert scores to numpy array safely
+        # Convert scores to numpy array for softmax
         scores = np.array(scores, dtype=np.float32)
         
-        # Select top-N moves safely
+        # Select top-N moves
         top_n = min(top_n, len(scores))
         indices = np.argsort(scores)[-top_n:]
         top_moves = [moves[i] for i in indices]
