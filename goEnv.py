@@ -31,8 +31,6 @@ class GoGame:
         self.sgf_moves = ""
 
     def step(self, action):
-        print(action)
-        print(type(action))
         if self.get_turn() == 1:
             color = "B"
         else:
