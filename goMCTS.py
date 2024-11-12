@@ -194,7 +194,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
                 # Print updated board
                 print("\nBoard after move:")
                 print_board_state(game)
-                print(f"Move: {chr(65 + move[1] if move[1] < 8 else 66 + move[1])}{9 - move[0]}")
+                print(f"Move: {move}")
                 
                 # Switch players
                 current_player = 'white' if current_player == 'black' else 'black'
