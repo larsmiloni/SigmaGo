@@ -24,6 +24,7 @@ class GoGame:
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
         self.history = []  # To track past board states (for Ko rules)
         self.sgf_moves = ""
+        self.isGameOver = False
 
     def reset(self):
         self.state = np.zeros((govars.NUM_LAYERS, self.size, self.size))
@@ -57,6 +58,7 @@ class GoGame:
             if previous_move_was_pass:
                 print("Game over due to consecutive passes.")
                 self.state[govars.DONE] = 1
+                self.isGameOver = True
                 return self.get_board(), 0, True
 
             return self.get_board(), 0, False  # No reward for passing, game not over
