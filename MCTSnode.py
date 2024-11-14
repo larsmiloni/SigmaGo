@@ -45,6 +45,9 @@ class MCTSNode:
         Returns:
             Tuple: The selected move and child node.
         """
+
+        if not self.children:
+            return None
         # Get legal actions directly from game state
         legal_actions = self.game_state.get_legal_actions()
         
@@ -55,35 +58,7 @@ class MCTSNode:
             return "pass", None
             
         # If no children exist but we have legal moves, expand first
-        if not self.children and legal_actions:
-            try:
-                policy = self.game_state.network.predict(self.game_state.state)
-                for move in legal_actions:
-                    if move not in ("pass"):
-                        move_idx = move[0] * 9 + move[1]
-                        new_state = copy.deepcopy(self.game_state)
-                        new_state.step(move)
-                        # Ensure policy value is detached if it's a tensor
-                        prior = policy[move_idx].detach().item() if torch.is_tensor(policy) else policy[move_idx]
-                        self.children[move] = MCTSNode(
-                            new_state,
-                            parent=self,
-                            move=move,
-                            prior=prior
-                        )
-            except AttributeError:
-                # If no network available, use uniform prior
-                prior = 1.0 / len(legal_actions)
-                for move in legal_actions:
-                    if move not in ("pass"):
-                        new_state = copy.deepcopy(self.game_state)
-                        new_state.step(move)
-                        self.children[move] = MCTSNode(
-                            new_state,
-                            parent=self,
-                            move=move,
-                            prior=prior
-                        )
+        
         
         # Now calculate scores for existing children
         scores = []
