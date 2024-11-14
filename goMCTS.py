@@ -76,29 +76,15 @@ class MCTS:
                 
             node = root
             scratch_game = copy.deepcopy(game_state)
-            # print('Is scratch game over:', scratch_game.isGameOver)
-            # print('Is node expanded:', node.is_expanded)
-            # Selection - use UCB to select moves until reaching a leaf
+            
             while node.is_expanded and not scratch_game.state[govars.DONE].any():
-                try:
-                    move, node = node.select_child(self.c_puct)
+                move, next_node = node.select_child(self.c_puct)
 
-                       # Add a check in case `node` is None
-                    if node is None:
-                        print("Warning: No valid child node selected, defaulting to 'pass'.")
-                        return "pass"  # Exit the selection loop since no valid child is found
-
-
-                    # Check if the move is valid in the children dictionary
-                    if move in node.children:
-                        node = node.children[move]
-                    else:
-                        move = "pass"
-                except KeyError:
-                    move = "pass"
-                
-                if move != "pass":
-                    scratch_game.step(move)
+                    # Add a check in case `node` is None
+                if node is None:
+                    break # Reached a leaf node
+                node = next_node
+                scratch_game.step(move)
             
             # Expansion - add child nodes for all legal moves
             if not node.is_expanded and not scratch_game.state[govars.DONE].any():
@@ -234,7 +220,7 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
     """
     Trains the network on generated data in mini-batches.
     
-    Args:
+    Args
         network (tf.keras.Model): Model to train.
         training_data (List[Dict[str, np.ndarray]]): List of training samples with board states, policies, and outcomes.
     """
