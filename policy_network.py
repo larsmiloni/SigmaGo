@@ -255,24 +255,34 @@ class PolicyNetwork(torch.nn.Module):
 
 
 
-    def test_model(self, x_t, y_t, batch_size=32):
+    def test_model(self, x_t, y_t_policy, y_t_value, batch_size=32):
         total_correct = 0
         total_loss = 0
         num_batches = x_t.shape[0] // batch_size + (1 if x_t.shape[0] % batch_size != 0 else 0)
 
         with torch.no_grad():
             for i in range(num_batches):
-                batch_x = x_t[i*batch_size:(i+1)*batch_size].float()
-                batch_y = y_t[i*batch_size:(i+1)*batch_size].long()
-                batch_x = batch_x.to(self.device)
-                batch_y = batch_y.to(self.device)
-                prediction = self.forward(batch_x)
-                loss = self.get_test_loss(prediction, batch_y)
+                batch_x = x_t[i*batch_size:(i+1)*batch_size].float().to(self.device)
+                batch_y_policy = y_t_policy[i*batch_size:(i+1)*batch_size].long().to(self.device)
+                batch_y_value = y_t_value[i*batch_size:(i+1)*batch_size].float().to(self.device)
+
+                policy_out, value_out = self.forward(batch_x)
+
+                # Policy loss
+                policy_loss = self.policy_loss_fn(policy_out, batch_y_policy)
+
+                # Value loss
+                value_loss = self.value_loss_fn(value_out.squeeze(), batch_y_value)
+
+                # Total loss
+                loss = policy_loss + value_loss
+
                 total_loss += loss.item() * batch_x.size(0)
-                correct = self.get_test_accuracy(prediction, batch_y)
+
+                # Accuracy
+                _, predicted = torch.max(policy_out.data, 1)
+                correct = (predicted == batch_y_policy).sum().item()
                 total_correct += correct
-                del batch_x, batch_y, prediction
-                torch.cuda.empty_cache()
 
         test_accuracy = total_correct / x_t.shape[0]
         test_loss = total_loss / x_t.shape[0]
@@ -383,7 +393,7 @@ class PolicyNetwork(torch.nn.Module):
 
 def load_features_labels(test_size_ratio: float):
     if not (0.0 < test_size_ratio < 1.0):
-            raise ValueError("test_size_ratio must be a float between 0 and 1.")
+        raise ValueError("test_size_ratio must be a float between 0 and 1.")
 
     cwd = os.getcwd()
     pickleRoot = os.path.join(cwd, 'pickles')
@@ -406,7 +416,7 @@ def load_features_labels(test_size_ratio: float):
     # Load pickles from both directories
     i = 0
     for pickle_file in glob.glob(os.path.join(pickleRoot, "*.pickle")):
-        i = i + 1
+        i += 1
         if i == 40:
             break
         features, labels = load_pickle(pickle_file)
@@ -424,31 +434,56 @@ def load_features_labels(test_size_ratio: float):
     features = np.concatenate(all_features, axis=0)
     labels = np.concatenate(all_labels, axis=0)
 
+    # Generate value targets (set to zero for now)
+    value_targets = np.zeros(len(features), dtype=np.float32)
+
     # Calculate the test size and split into training and testing sets
     data_size = len(features)
     test_size = int(data_size * test_size_ratio)
     train_size = data_size - test_size
 
     x_train, x_test = features[:train_size], features[train_size:]
-    y_train, y_test = labels[:train_size], labels[train_size:]
+    y_train_policy, y_test_policy = labels[:train_size], labels[train_size:]
+    y_train_value, y_test_value = value_targets[:train_size], value_targets[train_size:]
 
     return (
         torch.tensor(x_train, dtype=torch.float32),
-        torch.tensor(y_train, dtype=torch.float32),
+        torch.tensor(y_train_policy, dtype=torch.float32),
+        torch.tensor(y_train_value, dtype=torch.float32),
         torch.tensor(x_test, dtype=torch.float32),
-        torch.tensor(y_test, dtype=torch.float32),
+        torch.tensor(y_test_policy, dtype=torch.float32),
+        torch.tensor(y_test_value, dtype=torch.float32),
     )
+
 
 def main():
     sleep(5)
     pn = PolicyNetwork(alpha=0.01, num_res=3, num_channel=64)
-    x_train, y_train, x_test, y_test = load_features_labels(0.2)
-    y_train = torch.argmax(y_train, dim=1)
-    y_test = torch.argmax(y_test, dim=1)
-    pn.optimize(x_train, y_train, x_test, y_test, batch_size=128, iterations=150, save=True)
+    x_train, y_train_policy, y_train_value, x_test, y_test_policy, y_test_value = load_features_labels(0.2)
+
+    # Convert policy labels to LongTensor for CrossEntropyLoss
+    y_train_policy = torch.argmax(y_train_policy, dim=1).long()
+    y_test_policy = torch.argmax(y_test_policy, dim=1).long()
+
+    # Ensure value targets are FloatTensor
+    y_train_value = y_train_value.float()
+    y_test_value = y_test_value.float()
+
+    pn.optimize(
+        x_train,
+        y_train_policy,
+        y_train_value,
+        x_test,
+        y_test_policy,
+        y_test_value,
+        batch_size=128,
+        iterations=150,
+        save=True
+    )
     plt.plot(pn.historical_loss)
     plt.show()
     pn.save_metrics()
+
 
 
 if __name__ == "__main__": main()
