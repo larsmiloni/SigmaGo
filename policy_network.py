@@ -77,8 +77,8 @@ class PolicyNetwork(torch.nn.Module):
 
         # define optimizer
         self.optimizer = torch.optim.Adam(lr=alpha, params=self.parameters())
-
-        self.loss = torch.nn.CrossEntropyLoss()
+        self.policy_loss_fn = torch.nn.CrossEntropyLoss()
+        self.value_loss_fn = torch.nn.MSELoss()
 
 
     # def load_weights(self, model_path):
@@ -102,6 +102,7 @@ class PolicyNetwork(torch.nn.Module):
         Returns:
             tf.Tensor: Probability distribution over possible moves.
         """
+        
         network_input = self.prepare_input(board_state)
         policy_out, value_out = self(network_input)
         probabilities = torch.softmax(policy_out[0], dim=0)
@@ -120,30 +121,17 @@ class PolicyNetwork(torch.nn.Module):
         """
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
-        input_vector = np.expand_dims(board_state, axis=0)  # Add batch dimension
-        input_tensor = torch.tensor(input_vector, dtype=torch.float32)
-
-        # Move to the device of the model
-        input_tensor = input_tensor.to(self.device)
-
+        input_vector = np.expand_dims(board_state, axis=0)  # [1, 9, 9, 7]
+        input_vector = np.transpose(input_vector, (0, 3, 1, 2))  # [1, 7, 9, 9]
+        input_tensor = torch.tensor(input_vector, dtype=torch.float32).to(self.device)
         return input_tensor
 
     def define_network(self):
-        print("Defining policy head...")
-        # Policy head
-        self.policy_conv = nn.Conv2d(self.num_channel, 2, kernel_size=1)
-        self.policy_batch_norm = nn.BatchNorm2d(2)
-        self.policy_relu = nn.ReLU()  # Separate ReLU for policy head
-        self.policy_fc1 = nn.Linear(2 * 9 * 9, 128)
-        self.policy_fc2 = nn.Linear(128, 82)
-        self.sigmoid = nn.Sigmoid()
-        print("Policy head defined.")
-
         print("Defining network start...")
         # Network start
         self.conv = nn.Conv2d(self.state_channel, self.num_channel, kernel_size=1)
         self.batch_norm = nn.BatchNorm2d(self.num_channel)
-        self.network_relu = nn.ReLU()  # Separate ReLU for network start
+        self.network_relu = nn.ReLU()
         print("Network start defined.")
 
         print("Defining residual blocks...")
@@ -151,17 +139,29 @@ class PolicyNetwork(torch.nn.Module):
             self.res_block["r" + str(i)] = Block(self.num_channel)
         print("Residual blocks defined.")
 
+        print("Defining policy head...")
+        # Policy head
+        self.policy_conv = nn.Conv2d(self.num_channel, 2, kernel_size=1)
+        self.policy_batch_norm = nn.BatchNorm2d(2)
+        self.policy_relu = nn.ReLU()
+        self.policy_fc1 = nn.Linear(2 * 9 * 9, 128)
+        self.policy_fc2 = nn.Linear(128, 82)
+        print("Policy head defined.")
+
+        print("Defining value head...")
+        # Value head
         self.value_conv = nn.Conv2d(self.num_channel, 1, kernel_size=1)
         self.value_batch_norm = nn.BatchNorm2d(1)
         self.value_relu = nn.ReLU()
         self.value_fc1 = nn.Linear(1 * 9 * 9, 128)
         self.value_fc2 = nn.Linear(128, 1)
         self.tanh = nn.Tanh()
+        print("Value head defined.")
 
     def forward(self, x):
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Expected input to be a torch.Tensor but got {type(x)}")
-    
+        
         if x.device != self.device:
             x = x.to(self.device)
         out = x
@@ -170,17 +170,21 @@ class PolicyNetwork(torch.nn.Module):
         out = self.network_relu(out)
         for i in range(1, self.num_res + 1):
             out = self.res_block["r" + str(i)](out)
-        # Policy head
-        out = self.policy_conv(out)
-        out = self.policy_batch_norm(out)
-        out = self.policy_relu(out)
-        out = out.reshape(-1, 2 * 9 * 9)
-        out = self.policy_fc1(out)
-        out = self.policy_relu(out)
-        out = self.policy_fc2(out)
+        
+        # Save the output from residual blocks
+        res_out = out
 
-         # Value head
-        value_out = self.value_conv(out)
+        # Policy head
+        policy_out = self.policy_conv(res_out)
+        policy_out = self.policy_batch_norm(policy_out)
+        policy_out = self.policy_relu(policy_out)
+        policy_out = policy_out.reshape(-1, 2 * 9 * 9)
+        policy_out = self.policy_fc1(policy_out)
+        policy_out = self.policy_relu(policy_out)
+        policy_out = self.policy_fc2(policy_out)
+
+        # Value head
+        value_out = self.value_conv(res_out)
         value_out = self.value_batch_norm(value_out)
         value_out = self.value_relu(value_out)
         value_out = value_out.reshape(-1, 1 * 9 * 9)
@@ -188,9 +192,10 @@ class PolicyNetwork(torch.nn.Module):
         value_out = self.value_relu(value_out)
         value_out = self.value_fc2(value_out)
         value_out = self.tanh(value_out)  # Output value in range [-1, 1]
-        return out
 
-    def optimize(self, x, y, x_t, y_t, batch_size=64, iterations=10, alpha=0.001, test_interval=10, save=False):
+        return policy_out, value_out
+
+    def optimize(self, x, y_policy, y_value, x_t, y_t_policy, y_t_value, batch_size=64, iterations=10, alpha=0.001, test_interval=10, save=False):
         print("Optimizing")
         # Update optimizer with new learning rate
         self.optimizer = torch.optim.Adam(self.parameters(), lr=alpha)
@@ -204,16 +209,26 @@ class PolicyNetwork(torch.nn.Module):
 
             for i in range(num_batch):
                 batch_x = x[i*batch_size:(i+1)*batch_size].float().to(self.device)
-                batch_y = y[i*batch_size:(i+1)*batch_size].long().to(self.device)
+                batch_y_policy = y_policy[i*batch_size:(i+1)*batch_size].long().to(self.device)
+                batch_y_value = y_value[i*batch_size:(i+1)*batch_size].float().to(self.device)
 
-                prediction = self.forward(batch_x)
-                loss = self.loss(prediction, batch_y)
+                policy_out, value_out = self.forward(batch_x)
+
+                # Policy loss
+                policy_loss = self.policy_loss_fn(policy_out, batch_y_policy)
+
+                # Value loss
+                value_loss = self.value_loss_fn(value_out.squeeze(), batch_y_value)
+
+                # Total loss
+                loss = policy_loss + value_loss
+
                 training_loss_sum += loss.item()
 
                 # Calculate training accuracy for the batch
-                _, predicted = torch.max(prediction.data, 1)
-                correct_predictions += (predicted == batch_y).sum().item()
-                total_predictions += batch_y.size(0)
+                _, predicted = torch.max(policy_out.data, 1)
+                correct_predictions += (predicted == batch_y_policy).sum().item()
+                total_predictions += batch_y_policy.size(0)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -228,23 +243,16 @@ class PolicyNetwork(torch.nn.Module):
 
             # Test model at the end of each iteration
             if (iter + 1) % test_interval == 0:
-                self.test_model(x_t, y_t)
+                self.test_model(x_t, y_t_policy, y_t_value)
                 self.test_iteration.append(iter)
 
-                # Calculate average training loss and training accuracy for the iteration
-                avg_training_loss = training_loss_sum / num_batch
-                training_accuracy = correct_predictions / total_predictions
-
-                # Print training loss, training accuracy, and latest test accuracy after each iteration
-                print(f"Iteration {iter + 1}/{iterations}")
-                print(f"Training Loss: {avg_training_loss:.4f}")
-                print(f"Training Accuracy: {training_accuracy * 100:.2f}%")
                 if self.test_accuracies:
                     print(f"Test Accuracy: {self.test_accuracies[-1] * 100:.2f}%")
                 torch.cuda.empty_cache()
 
         if save:
             self.save()
+
 
 
     def test_model(self, x_t, y_t, batch_size=32):
