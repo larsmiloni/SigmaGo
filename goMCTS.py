@@ -151,10 +151,14 @@ class MCTS:
         _, value_pred = self.network.predict(game_state.state)
         return value_pred  # Already scaled to [-1, 1]
 
-def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=200):
+def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=20, vsRandom=False):
     """
     Fixed version of self-play training that properly maintains game state
     """
+    ai_win_count = 0
+    random_win_count = 0
+    ai_wins = []
+    random_wins = []
     mcts = MCTS(network, num_simulations=mcts_simulations)
     training_data = []
     
@@ -174,7 +178,22 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
             game_states.append(current_state)
             
             # Get move from MCTS
-            move = mcts.search(game)
+            if vsRandom:
+                if current_player == 'black':
+                    move = mcts.search(game)
+                else:
+                    print('Random turn')
+                            # Select random legal move
+                    legal_moves = game.get_legal_actions()
+                    
+                    if not legal_moves:
+                        move = "pass"
+                    else:
+                        # Select a random move from the list of legal moves
+                        selected_move = np.random.choice(len(legal_moves))
+                        move = legal_moves[selected_move]
+            else:
+                move = mcts.search(game)
 
             
             # Make the move and update game state
@@ -224,6 +243,38 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
             print("\nUpdating network...")
             train_network_on_data(network, training_data)
             training_data = []
+        
+        if vsRandom:
+            # AI plays as black, Random as white
+            if winner == 0:  # Black wins
+                ai_win_count += 1
+                print("AI (Black) wins!")
+            else:  # White wins
+                random_win_count += 1
+                print("Random (White) wins!")
+    
+        
+    # Update win tracking lists
+    ai_wins.append(ai_win_count)
+    random_wins.append(random_win_count)
+    #train the network
+    
+
+
+
+    # Plotting AI vs Random wins over games
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, num_games + 1), ai_wins, label="AI Wins", marker="o")
+    plt.plot(range(1, num_games + 1), random_wins, label="Random Wins", marker="x")
+    plt.title("AI Wins vs Random Wins Over Games")
+    plt.xlabel("Games")
+    plt.ylabel("Wins")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("ai_vs_random.png") 
+
+    print(f"\nAI wins: {ai_win_count}")
+    print(f"Random wins: {random_win_count}")
     
     return network
 
@@ -301,13 +352,10 @@ def move_idx(move, board_size=9):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
     # Load pre-trained network
-    model_path = "models/VN-R3-C64_new.pt"
+    model_path = "./models/VN-R3-C64-2.pt"
     print("Initializing network...")
-    try:
-        network = PolicyNetwork(model_path=model_path)
-    except Exception as e:
-        print("Unable to load pre-trained network:", e)
-        print("Please ensure the checkpoint file exists and is valid.")
+    network = PolicyNetwork(model_path)
+
     
     
     # # Load weights
@@ -324,7 +372,8 @@ if __name__ == "__main__":
     improved_network = self_play_training(
         network=network,
         num_games=5,
-        mcts_simulations=50
+        mcts_simulations=5,
+        vsRandom=True
     )
 
     # Save the improved network
