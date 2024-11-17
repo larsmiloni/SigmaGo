@@ -83,7 +83,7 @@ class MCTS:
                 move, next_node = node.select_child(self.c_puct)
 
                     # Add a check in case `node` is None
-                if node is None:
+                if next_node is None:
                     break # Reached a leaf node
                 node = next_node
                 scratch_game.step(move)
@@ -246,6 +246,7 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
     num_batches = num_samples // batch_size + int(num_samples % batch_size > 0)
 
     for epoch in range(1):  # Number of epochs
+        print(f"\nEpoch {epoch + 1}/{1}")
         indices = np.arange(num_samples)
         np.random.shuffle(indices)
         for batch_idx in range(num_batches):

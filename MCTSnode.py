@@ -43,22 +43,23 @@ class MCTSNode:
             top_n (int): Number of top children to consider for softmax sampling.
         
         Returns:
-            Tuple: The selected move and child node.
+            Tuple: The selected move and child node, or ("pass", None) if no valid move is found.
         """
 
+        # If no children exist, return "pass"
         if not self.children:
-            return None
+            return "pass", None
+
         # Get legal actions directly from game state
         legal_actions = self.game_state.get_legal_actions()
         
-        # Handle special cases first
+        # Handle special cases
         if not legal_actions:
             return "pass", None
         if set(legal_actions) == {"pass"}:
             return "pass", None
             
-        # If no children exist but we have legal moves, expand first
-        
+        # If no children exist but we have legal moves, expand first (should be handled outside of this function)
         
         # Now calculate scores for existing children
         scores = []
@@ -118,7 +119,13 @@ class MCTSNode:
             # Fall back to highest scoring move
             selected_move, selected_child = top_moves[-1]
         
+        # If the selected move or child is None, return "pass"
+        if selected_child is None:
+            print("Warning: selected_child is None, returning 'pass'")
+            return "pass", None
+
         return selected_move, selected_child
+
 
 
     def backup(self, reward):
