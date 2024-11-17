@@ -49,7 +49,7 @@ def ai_vs_human():
 
 def ai_vs_ai_cnn():
     network_player1 = PolicyNetwork("./models/PN_R3_C64.pt")
-    network_player2 = PolicyNetwork("./models/PN_R3_C64_IMPROVED_MODEL.pt") 
+    network_player2 = PolicyNetwork("./models/VN-R3-C64-150-iter.pt") 
     create_ai_match(network_player1, network_player2, isBothCNN=True)
 
 def ai_mcts_vs_random():
