@@ -78,6 +78,15 @@ class MCTS:
                 
             node = root
             scratch_game = copy.deepcopy(game_state)
+
+            while node.is_expanded and not scratch_game.state[govars.DONE].any():
+                move, next_node = node.select_child(self.c_puct)
+
+                    # Add a check in case `node` is None
+                if node is None:
+                    break # Reached a leaf node
+                node = next_node
+                scratch_game.step(move)
             
             if not node.is_expanded and not scratch_game.state[govars.DONE].any():
                 # Get both policy and value predictions
