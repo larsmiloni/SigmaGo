@@ -104,7 +104,7 @@ class GoGame:
 
         self.state[govars.TURN] = 1 - self.state[govars.TURN]
 
-    def get_board(self):
+    def get_board(self) -> np.ndarray:
         return self.state[govars.BOARD]
 
 

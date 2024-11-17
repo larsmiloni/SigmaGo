@@ -7,7 +7,8 @@ import timeit
 import os
 from pysgf import SGF
 import math
-from cnn_channels import get_states
+from cnn_channels import get_states_old_format
+from tqdm import tqdm
 
 cwd = os.getcwd()
 path = cwd + '/data'
@@ -100,7 +101,7 @@ def countFiles(pathName):
 
 
 def parseMoves(file_name: str, labels: List, features: List):
-    get_states(file_name, features, labels)
+    get_states_old_format(file_name, features, labels)
 
 
 def sort_files(pathName, rankingSystem):
@@ -208,7 +209,7 @@ def parse_and_save_files(path, rank_system):
     nine_files_strong = glob.glob(
         path + "nine/" + "nine_strong/" + "*.sgf")
 
-    for nfile in nine_files_strong:
+    for nfile in tqdm(nine_files_strong):
         if nfile.endswith(".sgf"):
             filename = os.path.basename(nfile)
         else:

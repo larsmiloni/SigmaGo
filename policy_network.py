@@ -7,6 +7,8 @@ import torch
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 from torch import nn
+from datetime import datetime
+from time import sleep
 
 class Block(torch.nn.Module):
 
@@ -21,9 +23,6 @@ class Block(torch.nn.Module):
         self.batch_norm2 = torch.nn.BatchNorm2d(num_channel)
         self.relu2 = torch.nn.ReLU()
         print("Block Created")
-        self.device = torch.device('cuda:0' if not torch.cuda.is_available() else 'cpu:0')
-        print("Using device:", self.device)
-        self.to(self.device)
 
     def forward(self, x):
         out = self.pad1(x)
@@ -39,8 +38,9 @@ class Block(torch.nn.Module):
 
 class PolicyNetwork(torch.nn.Module):
 
-    def __init__(self, model_path, alpha=0.01, num_res=3, num_channel=3):
+    def __init__(self, model_path=None, alpha=0.01, num_res=3, num_channel=3):
         super(PolicyNetwork, self).__init__()
+        torch.cuda.empty_cache()
         print("Policy Network Created 1")
         #self.input_channels = num_channel
         self.model_path = model_path
@@ -50,16 +50,16 @@ class PolicyNetwork(torch.nn.Module):
         self.res_block = torch.nn.ModuleDict()
         self.num_channel = num_channel
         self.historical_loss = []
-        
+
         # network metrics
         self.training_losses = []
         self.test_losses = []
         self.training_accuracies = []
         self.test_accuracies = []
         self.test_iteration = []
-        
+
         self.model_name = "VN-R" + str(self.num_res) + "-C" + str(self.num_channel)
-        
+
         self.define_network()
         try:
             if self.model_path:
@@ -67,30 +67,30 @@ class PolicyNetwork(torch.nn.Module):
                 self.load_state_dict(torch.load(self.model_path, map_location=self.device))
         except Exception as e:
             print(e)
-        
-        
+
+
         # define optimizer
         self.optimizer = torch.optim.Adam(lr=alpha, params=self.parameters())
-        
-        self.loss = torch.nn.BCELoss()
-        
-        self.device = torch.device('cuda:0' if not torch.cuda.is_available() else 'cpu:0')
+
+        self.loss = torch.nn.CrossEntropyLoss()
+
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
         print("Using device pn:", self.device)
         self.to(self.device)
 
     # def load_weights(self, model_path):
 
         # if self.device != 'cpu:0':
-            
+
         # self.load_weights(model_path)
-            
+
         # else:
         #     self.load_state_dict(torch.load(self.model_path, map_location=self.device))
-    
+
     def predict(self, board_state):
         """
         Predicts the move probabilities for a given board state.
-        
+
         Args:
             board_state (np.ndarray): Current state of the Go board, as a 9x9x6 array.
 
@@ -112,7 +112,7 @@ class PolicyNetwork(torch.nn.Module):
         """
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
         input_vector = np.expand_dims(board_state, axis=0)
-    
+
         return input_vector
 
     def define_network(self):
@@ -123,7 +123,6 @@ class PolicyNetwork(torch.nn.Module):
         self.policy_relu = nn.ReLU()  # Separate ReLU for policy head
         self.policy_fc1 = nn.Linear(2 * 9 * 9, 128)
         self.policy_fc2 = nn.Linear(128, 82)
-        self.softmax = nn.Softmax(dim=1)
         self.sigmoid = nn.Sigmoid()
         print("Policy head defined.")
 
@@ -140,63 +139,31 @@ class PolicyNetwork(torch.nn.Module):
         print("Residual blocks defined.")
 
     def forward(self, x):
-        out = torch.Tensor(x).float().to(self.device)
+        if x.device != self.device:
+            x = x.to(self.device)
+        out = x
         out = self.conv(out)
         out = self.batch_norm(out)
-        out = self.network_relu(out)  # Use network ReLU
-
+        out = self.network_relu(out)
         for i in range(1, self.num_res + 1):
             out = self.res_block["r" + str(i)](out)
-
         # Policy head
         out = self.policy_conv(out)
         out = self.policy_batch_norm(out)
-        out = self.policy_relu(out)  # Use policy ReLU
+        out = self.policy_relu(out)
         out = out.reshape(-1, 2 * 9 * 9)
         out = self.policy_fc1(out)
-        out = self.policy_relu(out)  # Use policy ReLU
+        out = self.policy_relu(out)
         out = self.policy_fc2(out)
-        out = self.softmax(out)
         return out
-    
-    def train_on_batch(self, batch_states, batch_policies, batch_values):
-        """
-        Trains the network on a single batch of data.
-        
-        Args:
-            batch_states (torch.Tensor): Batch of board states.
-            batch_policies (torch.Tensor): Batch of policy vectors.
-            batch_values (torch.Tensor): Batch of value vectors.
-        
-        Returns:
-            float: The loss value for the batch.
-        """
-        self.optimizer.zero_grad()
-        policy_preds, value_preds = self(batch_states)
-        policy_loss = self.loss_fn(policy_preds, batch_policies)
-        value_loss = self.loss_fn(value_preds.squeeze(), batch_values)
-        loss = policy_loss + value_loss
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
 
-
-    def optimize(self, x, y, x_t, y_t, batch_size=16, iterations=10, alpha=0.1, test_interval=1000, save=False):
+    def optimize(self, x, y, x_t, y_t, batch_size=64, iterations=10, alpha=0.001, test_interval=10, save=False):
         print("Optimizing")
-        x_t = x_t.float().to(self.device)
-        y_t = y_t.float().to(self.device)
-
-        # Model and log paths
-        model_name = "PN-R" + str(self.num_res) + "-C" + str(self.num_channel)
-        self.model_name = model_name
-        model_path = "models/policy_net/{}".format(model_name)
-        log_path = "logs/policy_net/{}/".format(model_name)
+        # Update optimizer with new learning rate
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=alpha)
 
         num_batch = x.shape[0] // batch_size
 
-        print("Training Model:", model_name)
-
-        # Training loop
         for iter in tqdm(range(iterations)):
             training_loss_sum = 0.0
             correct_predictions = 0
@@ -204,72 +171,80 @@ class PolicyNetwork(torch.nn.Module):
 
             for i in range(num_batch):
                 batch_x = x[i*batch_size:(i+1)*batch_size].float().to(self.device)
-                batch_y = y[i*batch_size:(i+1)*batch_size].float().to(self.device)
+                batch_y = y[i*batch_size:(i+1)*batch_size].long().to(self.device)
 
                 prediction = self.forward(batch_x)
                 loss = self.loss(prediction, batch_y)
                 training_loss_sum += loss.item()
 
                 # Calculate training accuracy for the batch
-                correct_predictions += (prediction.argmax(dim=1) == batch_y.argmax(dim=1)).sum().item()
+                _, predicted = torch.max(prediction.data, 1)
+                correct_predictions += (predicted == batch_y).sum().item()
                 total_predictions += batch_y.size(0)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                torch.cuda.empty_cache()
 
-                self.historical_loss.append(loss.detach())
-
-                # Test model at specified intervals
-                if (iter * num_batch + i) % test_interval == 0:
-                    self.test_model(x_t, y_t)
-                    self.test_iteration.append(iter * num_batch + i)
-
-            # Calculate average training loss and training accuracy for the iteration
             avg_training_loss = training_loss_sum / num_batch
             training_accuracy = correct_predictions / total_predictions
 
-            # Print training loss, training accuracy, and latest test accuracy after each iteration
             print(f"Iteration {iter + 1}/{iterations}")
             print(f"Training Loss: {avg_training_loss:.4f}")
             print(f"Training Accuracy: {training_accuracy * 100:.2f}%")
-            if self.test_accuracies:
-                print(f"Test Accuracy: {self.test_accuracies[-1] * 100:.2f}%")
-            torch.cuda.empty_cache()
-        
-        self.save()
-            
 
-    def test_model(self, x_t, y_t):
+            # Test model at the end of each iteration
+            if (iter + 1) % test_interval == 0:
+                self.test_model(x_t, y_t)
+                self.test_iteration.append(iter)
 
-        prediction = self.forward(x_t)
-        test_accuracy = self.get_test_accuracy(prediction, y_t)
-        test_loss = self.get_test_loss(prediction, y_t)
+                # Calculate average training loss and training accuracy for the iteration
+                avg_training_loss = training_loss_sum / num_batch
+                training_accuracy = correct_predictions / total_predictions
 
-        m = len(self.historical_loss)
-        l = torch.Tensor(self.historical_loss)
-        training_loss = torch.sum(l)/m
+                # Print training loss, training accuracy, and latest test accuracy after each iteration
+                print(f"Iteration {iter + 1}/{iterations}")
+                print(f"Training Loss: {avg_training_loss:.4f}")
+                print(f"Training Accuracy: {training_accuracy * 100:.2f}%")
+                if self.test_accuracies:
+                    print(f"Test Accuracy: {self.test_accuracies[-1] * 100:.2f}%")
+                torch.cuda.empty_cache()
 
-        del(prediction)
-        torch.cuda.empty_cache()
-        self.historical_loss = []
+        if save:
+            self.save()
 
-        self.test_accuracies.append(test_accuracy.detach().type(torch.float16))
-        self.test_losses.append(test_loss.detach().type(torch.float16))
-        self.training_losses.append(training_loss.type(torch.float16))
+
+    def test_model(self, x_t, y_t, batch_size=32):
+        total_correct = 0
+        total_loss = 0
+        num_batches = x_t.shape[0] // batch_size + (1 if x_t.shape[0] % batch_size != 0 else 0)
+
+        with torch.no_grad():
+            for i in range(num_batches):
+                batch_x = x_t[i*batch_size:(i+1)*batch_size].float()
+                batch_y = y_t[i*batch_size:(i+1)*batch_size].long()
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                prediction = self.forward(batch_x)
+                loss = self.get_test_loss(prediction, batch_y)
+                total_loss += loss.item() * batch_x.size(0)
+                correct = self.get_test_accuracy(prediction, batch_y)
+                total_correct += correct
+                del batch_x, batch_y, prediction
+                torch.cuda.empty_cache()
+
+        test_accuracy = total_correct / x_t.shape[0]
+        test_loss = total_loss / x_t.shape[0]
+        self.test_accuracies.append(test_accuracy)
+        self.test_losses.append(test_loss)
+        print(datetime.now().strftime("%H:%M:%S"))
 
 
     def get_test_accuracy(self, prediction, y_t):
+        _, predicted = torch.max(prediction.data, 1)
+        correct = (predicted == y_t).sum().item()
+        return correct
 
-        c = torch.zeros(y_t.shape[0], y_t.shape[1], device=prediction.device)
-
-        c[prediction == prediction.max(dim=0)[0]] = 1
-        c[prediction != prediction.max(dim=0)[0]] = 0
-
-        correct_percent = torch.sum(c*y_t) / y_t.shape[0]
-
-        return correct_percent
 
     def get_test_loss(self, prediction, y_t):
         return self.loss(prediction, y_t)
@@ -307,26 +282,23 @@ class PolicyNetwork(torch.nn.Module):
 
     def save(self):
         torch.save(self.state_dict(), self.model_name+".pt")
-        
-    def save(self, path):
-        torch.save(self.state_dict(), path)
-    
+
     def select_move(self, game_state) -> Tuple[int, int]:
         """
         Selects a move based on the predicted policy.
-        
+
         Args:
             game_state (GoGame): Current state of the game.
-        
+
         Returns:
             tuple: Selected move as (row, col) or "pass"
         """
         policy = self.predict(game_state.state).detach().cpu().numpy()
         legal_moves = game_state.get_legal_actions()
-        
+
         # Initialize list for all legal moves including pass
         legal_move_probs = []
-        
+
         # Handle regular moves
         for move in legal_moves:
             if move == "pass":
@@ -337,64 +309,83 @@ class PolicyNetwork(torch.nn.Module):
                 # Regular board position moves
                 move_prob = policy[move[0] * 9 + move[1]]
                 legal_move_probs.append((move, move_prob))
-        
+
         # Sort by probability
         legal_move_probs.sort(key=lambda x: x[1], reverse=True)
-        
+
         if not legal_move_probs:
             return "pass"
-        
+
         return legal_move_probs[0][0]
 
-def load_features_labels(test_size: int):
+def load_features_labels(test_size_ratio: float):
+    if not (0.0 < test_size_ratio < 1.0):
+            raise ValueError("test_size_ratio must be a float between 0 and 1.")
 
     cwd = os.getcwd()
     pickleRoot = os.path.join(cwd, 'pickles')
     mixedPickleRoot = os.path.join(cwd, 'pickles_mixed')
 
-    features, labels = [], []
+    all_features, all_labels = [], []
 
-    def loadPickle(pickleFile, features, labels):
+    def load_pickle(pickle_file):
         try:
-            with open(pickleFile, 'rb') as f:
-                print("Loading from ", pickleFile)
+            with open(pickle_file, 'rb') as f:
+                print("Loading from", pickle_file)
                 saved = pickle.load(f)
-                datasetNew = saved['dataset'].astype('float32')
-                labelsNew = saved['labels'].astype('float32')
-                del saved
-
-                if len(features) == 0:
-                    features, labels = datasetNew, labelsNew
-                else:
-                    features.append(datasetNew)
-                    labels.append(labelsNew)
-
-                print("Total so far - Features shape:", features.shape)
-                print("Total so far - Labels shape:", labels.shape)
-                return features, labels
+                dataset_new = saved['dataset'].astype('float32')
+                labels_new = saved['labels'].astype('float32')
+                return dataset_new, labels_new
         except Exception as e:
-            print(f"Unable to load data from {pickleFile}: {e}")
-        return features, labels
+            print(f"Unable to load data from {pickle_file}: {e}")
+            return None, None
 
-    for pickleFile in glob.glob(os.path.join(pickleRoot, "*.pickle")):
-        features, labels = loadPickle(pickleFile, features, labels)
-    for mixedPickleFile in glob.glob(os.path.join(mixedPickleRoot, "*.pickle")):
-        features, labels = loadPickle(mixedPickleFile, features, labels)
+    # Load pickles from both directories
+    i = 0
+    for pickle_file in glob.glob(os.path.join(pickleRoot, "*.pickle")):
+        i = i + 1
+        if i == 40:
+            break
+        features, labels = load_pickle(pickle_file)
+        if features is not None and labels is not None:
+            all_features.append(features)
+            all_labels.append(labels)
 
+    for mixed_pickle_file in glob.glob(os.path.join(mixedPickleRoot, "*.pickle")):
+        features, labels = load_pickle(mixed_pickle_file)
+        if features is not None and labels is not None:
+            all_features.append(features)
+            all_labels.append(labels)
+
+    # Combine all features and labels into single arrays
+    features = np.concatenate(all_features, axis=0)
+    labels = np.concatenate(all_labels, axis=0)
+
+    # Calculate the test size and split into training and testing sets
     data_size = len(features)
+    test_size = int(data_size * test_size_ratio)
     train_size = data_size - test_size
+
     x_train, x_test = features[:train_size], features[train_size:]
     y_train, y_test = labels[:train_size], labels[train_size:]
 
-    return torch.Tensor(x_train), torch.Tensor(y_train), torch.Tensor(x_test), torch.Tensor(y_test)
+    return (
+        torch.tensor(x_train, dtype=torch.float32),
+        torch.tensor(y_train, dtype=torch.float32),
+        torch.tensor(x_test, dtype=torch.float32),
+        torch.tensor(y_test, dtype=torch.float32),
+    )
 
 def main():
+    sleep(5)
     pn = PolicyNetwork(alpha=0.01, num_res=3, num_channel=64)
-    x_train, y_train, x_test, y_test = load_features_labels(1000)
-    pn.optimize(x_train, y_train, x_test, y_test, batch_size=1_000, iterations=1_000, save=True)
-    print(pn.forward(x_train).shape)
+    x_train, y_train, x_test, y_test = load_features_labels(0.2)
+    y_train = torch.argmax(y_train, dim=1)
+    y_test = torch.argmax(y_test, dim=1)
+    pn.optimize(x_train, y_train, x_test, y_test, batch_size=128, iterations=150, save=True)
     plt.plot(pn.historical_loss)
     plt.show()
+    pn.save_metrics()
 
 
 if __name__ == "__main__": main()

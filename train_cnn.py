@@ -12,7 +12,7 @@ import os
 import glob
 
 cwd = os.getcwd()
-pickleRoot = os.path.join(cwd, 'pickles')
+pickleRoot = os.path.join(cwd, 'zeros_pickles')
 mixedPickleRoot = os.path.join(cwd, 'pickles_mixed')
 checkpointFile = os.path.join(cwd, 'checkpoints/model.keras')
 csvFile = os.path.join(cwd, 'trainResults/trainResults.csv')
@@ -56,7 +56,7 @@ def randomize(dataset, labels):
 dataset, labels = randomize(dataset, labels)
 
 data_size = len(dataset)
-test_size = 10000
+test_size = round(0.2*data_size)
 print(data_size)
 print(test_size)
 train_size = data_size - test_size
@@ -99,9 +99,6 @@ def train_step(batch_data, batch_labels):
 @tf.function
 def compute_accuracy(predictions, labels):
     # Ensure shapes are consistent, then calculate accuracy
-    print("----")
-    print(predictions.shape)
-    print(labels.shape)
     predictions = tf.argmax(predictions, axis=1)
     labels = tf.argmax(labels, axis=1)
     correct_preds = tf.equal(predictions, labels)

@@ -9,7 +9,7 @@ import numpy as np
 import govars
 
 # Hyperparameters
-num_epochs = 100_000
+num_epochs = 1_000
 batch_size = 128
 learning_rate = 1e-3
 
@@ -24,10 +24,32 @@ class GoCNN(nn.Module):
     def __init__(self):
         super(GoCNN, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=5, padding=2)  # Updated kernel size to 5, adjusted padding
         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
         self.fc1 = nn.Linear(256 * board_size * board_size, 512)
         self.fc2 = nn.Linear(512, output_size)
+        
+        self.initial_conv = nn.Sequential(
+            nn.Conv2d(input_channels, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU()
+        )
+        
+        # Residual blocks
+        self.residual_blocks = nn.ModuleList([
+            self._create_residual_block(256) for _ in range(6)
+        ])
+        
+        # Policy head
+        self.policy_head = nn.Sequential(
+            nn.Conv2d(256, 2, kernel_size=1),
+            nn.BatchNorm2d(2),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(2 * board_size * board_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_size)
+        )
         
     def forward(self, x):
         x = torch.relu(self.conv1(x))
