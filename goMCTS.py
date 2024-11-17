@@ -109,6 +109,13 @@ class MCTS:
                             move=move,
                             prior=prior
                         )
+                if "pass" in valid_moves:
+                    node.children["pass"] = MCTSNode(
+                        scratch_game,
+                        parent=node,
+                        move="pass",
+                        prior=policy_pred[-1] if policy_sum > 0 else 1 / len(valid_moves)
+                    )
                 node.is_expanded = True
 
                 # Backup the value
