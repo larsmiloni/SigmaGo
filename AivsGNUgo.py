@@ -1,6 +1,5 @@
 from policy_network import PolicyNetwork
-from OnelayerMCTS import PreTrainedGoNetwork
-from OnelayerMCTS import MCTS
+from goMCTS import MCTS
 from goEnv import GoGame
 import subprocess
 from time import sleep
@@ -121,10 +120,9 @@ def main(simulations=1):
     goMCTS_wins = 0
     for _ in range(simulations):
         gnugo = run_gnugo()
-        network = PreTrainedGoNetwork(checkpoint_path="./models/model.keras")
-        network.load_weights("./models/model.keras") 
+        network = PolicyNetwork(model_path="./models/VN-R3-C64-150-iter.pt")
 
-        goMCTS = MCTS(network, num_simulations=5)
+        goMCTS = MCTS(network, num_simulations=70)
         goPolicy = network
         game = GoGame(size=9)
 
@@ -142,7 +140,7 @@ def main(simulations=1):
             apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True)
 
             # Get move from GoMCTS
-            goMCTS_move = goPolicy.select_move(game)
+            goMCTS_move = goMCTS.search(game)
             print(f"GoMCTS move: {goMCTS_move}")
 
             
