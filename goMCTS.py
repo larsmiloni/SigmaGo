@@ -15,7 +15,6 @@ from torch import nn
 
 
 
-
 def softmax(x):
     e_x = np.exp(x - np.max(x))  # Stability trick for softmax
     return e_x / e_x.sum()
@@ -172,10 +171,12 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         
         while not game.state[govars.DONE].any():
             print(f"\nMove {move_count + 1} - {current_player}'s turn")
+            turn = game.get_turn()  # 1 for Black, 2 for White
             current_state = copy.deepcopy(game.state)
-            
-            # Store current state before move
-            game_states.append(current_state)
+            current_player = map_turn_to_player(turn)
+            # Store current state and current player
+            game_states.append((current_state, current_player))
+            features = extract_features(current_state, current_player)
             
             # Get move from MCTS
             if vsRandom:
@@ -231,18 +232,18 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         
         # Add game data to training set
        
-        for state, policy in zip(game_states, mcts_policies):
+        for (state,player), policy in zip(game_states, mcts_policies):
+            features = extract_features(state, player)
             training_data.append({
-                'state': state,
+                'state': features,
                 'policy': policy,
                 'value': winner
             })
         
-        # Update network periodically
-        if (game_idx + 1) % 5 == 0:
-            print("\nUpdating network...")
-            train_network_on_data(network, training_data)
-            training_data = []
+        
+        print("\nUpdating network...")
+        train_network_on_data(network, training_data)
+        training_data = []
         
         if vsRandom:
             # AI plays as black, Random as white
@@ -258,6 +259,10 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
         ai_wins.append(ai_win_count)
         random_wins.append(random_win_count)
         #train the network
+        if vsRandom:
+            network.save(path=f"./models/VN-R3-C64-2-self-play{game_idx}.pt")
+        else:
+            network.save(path=f"./models/VN-R3-C64-2-play-random{game_idx}.pt")
     
 
 
@@ -276,7 +281,7 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
     print(f"\nAI wins: {ai_win_count}")
     print(f"Random wins: {random_win_count}")
     
-    return network
+    
 
 def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dict[str, np.ndarray]]):
     """
@@ -295,6 +300,10 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
     states = torch.tensor(states, dtype=torch.float32).to(network.device)
     policies = torch.tensor(policies, dtype=torch.float32).to(network.device)
     values = torch.tensor(values, dtype=torch.float32).unsqueeze(1).to(network.device)
+
+    print(f"States shape: {states.shape}")  # Should be [batch_size, 7, 9, 9]
+    print(f"Policies shape: {policies.shape}")
+    print(f"Values shape: {values.shape}")
 
     # Define loss functions
     policy_loss_fn = nn.CrossEntropyLoss()
@@ -339,6 +348,66 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
 def print_board_state(game):
     game.render_in_terminal()
 
+def extract_features(state, current_player):
+    """
+    Convert the board state to input features for the network.
+
+    Args:
+        state (np.ndarray): The board state, shape [7,9,9], with values:
+                            0 = empty,
+                            1 = black stone,
+                           -1 = white stone
+        current_player (int): 1 for black, -1 for white
+
+    Returns:
+        np.ndarray: Input features, shape [7,9,9]
+    """
+    features = np.zeros((7, 9, 9), dtype=np.float32)
+
+    # Feature 0: Current player's stones
+    features[0] = (state[govars.BLACK] if current_player == 'black' else state[govars.WHITE]).astype(np.float32)
+
+    # Feature 1: Opponent's stones
+    features[1] = (state[govars.WHITE] if current_player == 'black' else state[govars.BLACK]).astype(np.float32)
+
+    # Feature 2: Turn indicator (1 for current player, 0 otherwise)
+    if current_player == 'white':
+        features[2] = np.ones((9, 9), dtype=np.float32)
+    else:
+        features[2] = np.zeros((9, 9), dtype=np.float32)
+    
+
+    # Feature 3: Invalid moves
+    features[3] = state[govars.INVD]
+
+    # Feature 4: Previous move was a pass
+    features[4] = state[govars.PASS]
+
+    # Feature 5: Game over
+    features[5] = state[govars.DONE]
+
+    # Feature 6: Board state
+    features[6] = state[govars.BOARD]
+
+    return features
+
+def map_turn_to_player(turn):
+    """
+    Maps the turn value from GoGame to current_player.
+
+    Args:
+        turn (int): The turn value from GoGame.get_turn().
+
+    Returns:
+        int: 1 for Black, -1 for White.
+    """
+    if turn == 1:
+        return 'black'
+    elif turn == 2:
+        return 'white'
+    else:
+        raise ValueError(f"Invalid turn value: {turn}")
+
 
     
 def move_idx(move, board_size=9):
@@ -369,15 +438,14 @@ if __name__ == "__main__":
 
         # Perform reinforcement learning through self-play
     print("Starting self-play training...")
-    improved_network = self_play_training(
+    self_play_training(
         network=network,
         num_games=5,
         mcts_simulations=5,
         vsRandom=True
     )
 
-    # Save the improved network
-    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL_1.pt")  # Saves full model
+    
     
    
     

@@ -2,7 +2,7 @@ import copy
 
 import numpy as np
 from policy_network import PolicyNetwork
-from goMCTS import MCTS
+from goMCTS import MCTS, train_network_on_data, extract_features, map_turn_to_player
 from goEnv import GoGame
 import subprocess
 from time import sleep
@@ -126,46 +126,51 @@ def main(simulations=1):
     gnugo_wins = 0
     goMCTS_wins = 0
     training_data = []
-    
-    for _ in range(simulations):
+
+    for sim in range(simulations):
         gnugo = run_gnugo()
-        network = PolicyNetwork(model_path="./models/VN-R3-C64-2.pt")
+        if sim> 0:
+            network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2-{simulations-1}.pt")
+        else:
+            network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2.pt")
 
         goMCTS = MCTS(network, num_simulations=10)
         game = GoGame(size=9)
+        game.reset()  # Reset the game state
         game_states = []
         mcts_policies = []
-        while game.isGameOver==False:
-            # Get move from GNU Go
+
+        while not game.isGameOver:
+            # Determine the current player
+            turn = game.get_turn()  # 1 for Black, 2 for White
+            current_player = map_turn_to_player(turn)
+
+            # Store current state and current player
             current_state = copy.deepcopy(game.state)
-            
-            # Store current state before move
-            game_states.append(current_state)
-        
-            sleep(1)
-            gnugo_move = send_command(gnugo, 'genmove black')
-            print(f"GNU Go move: {gnugo_move}")
+            game_states.append((current_state, current_player))
 
-            
+            # Feature extraction
+            features = extract_features(current_state, current_player)
 
-            # Apply GNU Go move to the GoMCTS environment
-            goMCTS_move = convert_move_to_goMCTS(gnugo_move)
-            apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True, mcts_policies=mcts_policies)
+            if current_player == 'black':
+                # GNU Go (Black) makes a move
+                sleep(1)  # Optional: Adjust as needed
+                gnugo_move = send_command(gnugo, 'genmove black')
+                print(f"GNU Go (Black) move: {gnugo_move}")
 
-            # Get move from GoMCTS
-            goMCTS_move = goMCTS.search(game)
-            print(f"GoMCTS move: {goMCTS_move}")
+                # Convert and apply GNU Go move
+                goMCTS_move = convert_move_to_goMCTS(gnugo_move)
+                apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True, mcts_policies=mcts_policies)
 
-            
-            
+            else:
+                # GoMCTS (White) makes a move
+                goMCTS_move = goMCTS.search(game)
+                print(f"GoMCTS (White) move: {goMCTS_move}")
 
-            # Apply GoMCTS move to the GNU Go environment
-            apply_move(game, gnugo, goMCTS_move, is_gnugo_move=False)
+                # Convert and apply GoMCTS move
+                apply_move(game, gnugo, goMCTS_move, is_gnugo_move=False, mcts_policies=mcts_policies)
 
-            # Check for game end conditions
-            
-            # Create policy vector from the move
-                
+            # Check for game end conditions are handled within game.step()
 
         # Game over - evaluate result
         winner = game.determine_winner()
@@ -175,17 +180,21 @@ def main(simulations=1):
             gnugo_wins += 1
         else:
             goMCTS_wins += 1
-        
-        for state, policy in zip(game.state, mcts_policies):
+
+        # Collect training data
+        for (state, player), policy in zip(game_states, mcts_policies):
+            features = extract_features(state, player)
             training_data.append({
-                'state': state,
+                'state': features,
                 'policy': policy,
                 'value': winner
             })
 
-        goMCTS.train_network_on_data(network, training_data)
-        network.save(f"models/VN-R3-C64-2-{simulations}.pt") 
-            
+        # Train the network
+        train_network_on_data(network, training_data)
+        network.save(path=f"models/VN-R3-C64-2-{sim}.pt")
+
+    # Plot win rates
     gnugo_winrate, goMCTS_winrate = plot_winrate_over_games(gnugo_wins, goMCTS_wins)
     print(f"GNU Go win ratio: {gnugo_winrate:.2f}")
     print(f"GoMCTS win ratio: {goMCTS_winrate:.2f}")

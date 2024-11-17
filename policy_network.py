@@ -330,8 +330,19 @@ class PolicyNetwork(torch.nn.Module):
         self.save_test_loss()
         self.save_test_accuracy()
 
-    def save(self):
-        torch.save(self.state_dict(), self.model_name+".pt")
+    def save(self, path=None):
+        """
+        Saves the model's state dictionary to the specified path.
+
+        Args:
+            path (str, optional): The file path to save the model. If None, uses self.model_name.
+        """
+        if path is None:
+            path = self.model_name + ".pt"
+        torch.save(self.state_dict(), path)
+        print(f"Model saved to {path}")
+
+    
 
     def get_edge_mask(self, board_size):
         mask = torch.zeros(board_size, board_size)
