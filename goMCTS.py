@@ -96,11 +96,11 @@ class MCTS:
 
                 valid_moves = scratch_game.get_legal_actions()
                 # Normalize policy predictions over valid moves
-                policy_sum = np.sum([policy_pred[move[0] * 9 + move[1]] for move in valid_moves if move != "pass"])
+                policy_sum = np.sum([policy_pred[move_idx(move)] for move in valid_moves])
                 for move in valid_moves:
+                    idx = move_idx(move)
+                    prior = policy_pred[idx] / policy_sum if policy_sum > 0 else 1 / len(valid_moves)
                     if move != "pass":
-                        move_idx = move[0] * 9 + move[1]
-                        prior = policy_pred[move_idx] / policy_sum if policy_sum > 0 else 1 / len(valid_moves)
                         new_game = copy.deepcopy(scratch_game)
                         new_game.step(move)
                         node.children[move] = MCTSNode(
@@ -109,13 +109,13 @@ class MCTS:
                             move=move,
                             prior=prior
                         )
-                if "pass" in valid_moves:
-                    node.children["pass"] = MCTSNode(
-                        scratch_game,
-                        parent=node,
-                        move="pass",
-                        prior=policy_pred[-1] if policy_sum > 0 else 1 / len(valid_moves)
-                    )
+                    else:
+                        node.children["pass"] = MCTSNode(
+                            scratch_game,
+                            parent=node,
+                            move="pass",
+                            prior=prior
+                        )
                 node.is_expanded = True
 
                 # Backup the value
@@ -290,6 +290,11 @@ def print_board_state(game):
 
 
     
+def move_idx(move, board_size=9):
+    if move == "pass":
+        return board_size * board_size  # Last index for "pass"
+    else:
+        return move[0] * board_size + move[1]
 
 
        
