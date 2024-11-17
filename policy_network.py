@@ -37,7 +37,8 @@ class Block(torch.nn.Module):
 
 class PolicyNetwork(torch.nn.Module):
 
-    def __init__(self, model_path=None, alpha=0.01, num_res=3, num_channel=3):
+    def __init__(self, model_path=None, alpha=0.01, num_res=3, num_channel=64):
+        torch.cuda.empty_cache()
         super(PolicyNetwork, self).__init__()
         torch.cuda.empty_cache()
         print("Policy Network Created 1")
@@ -344,7 +345,7 @@ class PolicyNetwork(torch.nn.Module):
         return mask
 
     def select_move(self, game_state) -> Tuple[int, int]:
-        policy = self.predict(game_state.state).detach().cpu().numpy()
+        policy = self.predict(game_state.state)[0].detach().cpu().numpy()
         legal_moves = game_state.get_legal_actions()
 
         # Apply edge penalty

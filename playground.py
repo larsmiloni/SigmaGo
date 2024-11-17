@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 from policy_network import PolicyNetwork
 import ast
 from goEnv import GoGame
@@ -53,12 +54,12 @@ def ai_vs_ai_cnn():
     create_ai_match(network_player1, network_player2, isBothCNN=True)
 
 def ai_mcts_vs_random():
-    network = PolicyNetwork("./models/VN-R3-C64-150-iter.pt")
-    create_ai_match(network, None, isMCTSvsRandom=True, games=50)
+    network = PolicyNetwork("./models/VN-R3-C64-2.pt")
+    create_ai_match(network, None, isMCTSvsRandom=True, games=5)
 
 def ai_cnn_vs_random():
     network = PolicyNetwork("./models/VN-R3-C64-2.pt")
-    create_ai_match(network, None, isCNNvsRandom=True, games=1)
+    create_ai_match(network, None, isCNNvsRandom=True, games=10)
 
 def create_ai_match(network_player1: Type[PolicyNetwork], network_player2: Type[PolicyNetwork],
                     isHumanvsAi=False, isBothCNN=False, isBothMCTS=False,
@@ -77,11 +78,13 @@ def create_ai_match(network_player1: Type[PolicyNetwork], network_player2: Type[
     
     ai_win_count = 0
     random_win_count = 0
+    ai_wins = []
+    random_wins = []
 
     def play_game():
         nonlocal ai_win_count, random_win_count
 
-        mcts_simulations = 20
+        mcts_simulations = 40
         if isBothMCTS:
             mcts_player1 = MCTS(network_player1, num_simulations=mcts_simulations)
             mcts_player2 = MCTS(network_player2, num_simulations=mcts_simulations)
@@ -228,10 +231,29 @@ def create_ai_match(network_player1: Type[PolicyNetwork], network_player2: Type[
             else:  # White wins
                 random_win_count += 1
                 print("Random (White) wins!")
-
+    
     for i in range(games):
         print(f"\nGame {i + 1}")
         play_game()
+        
+        # Update win tracking lists
+        ai_wins.append(ai_win_count)
+        random_wins.append(random_win_count)
+        #train the network
+    
+
+
+
+    # Plotting AI vs Random wins over games
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, games + 1), ai_wins, label="AI Wins", marker="o")
+    plt.plot(range(1, games + 1), random_wins, label="Random Wins", marker="x")
+    plt.title("AI Wins vs Random Wins Over Games")
+    plt.xlabel("Games")
+    plt.ylabel("Wins")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("ai_vs_random.png") 
 
     print(f"\nAI wins: {ai_win_count}")
     print(f"Random wins: {random_win_count}")
