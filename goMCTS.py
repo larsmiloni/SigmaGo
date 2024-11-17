@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from goEnv import GoGame  # Import GoGame from the appropriate module
 from policy_network import PolicyNetwork
 import govars
+import torch
 
 
 
@@ -257,8 +258,9 @@ def print_board_state(game):
 
        
 if __name__ == "__main__":
+    torch.cuda.empty_cache()
     # Load pre-trained network
-    model_path = "models/PN-R3-C64.pt"
+    model_path = "models/VN-R3-C64-150-iter.pt"
     print("Initializing network...")
     try:
         network = PolicyNetwork(model_path=model_path)
@@ -280,23 +282,14 @@ if __name__ == "__main__":
     print("Starting self-play training...")
     improved_network = self_play_training(
         network=network,
-        num_games=1,
-        mcts_simulations=10
+        num_games=5,
+        mcts_simulations=50
     )
 
     # Save the improved network
-    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL.pt")  # Saves full model
+    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL_150_iter.pt")  # Saves full model
     
-    network = PolicyNetwork(model_path="models/PN_R3_C64_IMPROVED_MODEL.pt")
-    
-    improved_network_delux = self_play_training(
-        network=network,
-        num_games=1,
-        mcts_simulations=5
-    )
-
-    # Save the improved network
-    improved_network_delux.save("models/PN_R3_C64_IMPROVED_MODEL_2.pt")  # Saves full model
+   
     
     # except Exception as e:
     #     print("Unable to load pre-trained network:", e)
