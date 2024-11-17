@@ -9,6 +9,7 @@ from goEnv import GoGame  # Import GoGame from the appropriate module
 from policy_network import PolicyNetwork
 import govars
 import torch
+from torch import nn
 
 
 
@@ -78,42 +79,32 @@ class MCTS:
             node = root
             scratch_game = copy.deepcopy(game_state)
             
-            while node.is_expanded and not scratch_game.state[govars.DONE].any():
-                move, next_node = node.select_child(self.c_puct)
-
-                    # Add a check in case `node` is None
-                if node is None:
-                    break # Reached a leaf node
-                node = next_node
-                scratch_game.step(move)
-            
-            # Expansion - add child nodes for all legal moves
             if not node.is_expanded and not scratch_game.state[govars.DONE].any():
-                # Fixed: Properly unpack both policy and value predictions
-                #Might need to change this to unpack the policy and value predictions
-                policy_pred = self.network.predict(scratch_game.state)
+                # Get both policy and value predictions
+                policy_pred, value_pred = self.network.predict(scratch_game.state)
+                policy_pred = policy_pred.detach().cpu().numpy()
+                value_pred = value_pred  # Already a scalar
+
                 valid_moves = scratch_game.get_legal_actions()
-                
+                # Normalize policy predictions over valid moves
+                policy_sum = np.sum([policy_pred[move[0] * 9 + move[1]] for move in valid_moves if move != "pass"])
                 for move in valid_moves:
                     if move != "pass":
                         move_idx = move[0] * 9 + move[1]
+                        prior = policy_pred[move_idx] / policy_sum if policy_sum > 0 else 1 / len(valid_moves)
                         new_game = copy.deepcopy(scratch_game)
-            
                         new_game.step(move)
                         node.children[move] = MCTSNode(
-                            new_game, 
+                            new_game,
                             parent=node,
                             move=move,
-                            prior=policy_pred[move_idx]
+                            prior=prior
                         )
                 node.is_expanded = True
-        
-        # Evaluation
-        value = (self.evaluate_terminal(scratch_game) if scratch_game.state[govars.DONE].any()
-                else self.evaluate_position(scratch_game))
-        
-        # Backup
-        node.backup(value)
+
+                # Backup the value
+                node.backup(value_pred)
+                continue  # Start next simulation
         
         # Select best move based on visit counts
         visits = {move: child.visits for move, child in root.children.items()}
@@ -137,9 +128,8 @@ class MCTS:
     
     def evaluate_position(self, game_state: GoGame) -> float:
         """Evaluate non-terminal position using network prediction."""
-        prediction = self.network.predict(game_state.state)
-        # Use the pass probability as a value estimate
-        return 2 * prediction[81]  # Scale from [0,1] to [-1,1]
+        _, value_pred = self.network.predict(game_state.state)
+        return value_pred  # Already scaled to [-1, 1]
 
 def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulations=200):
     """
@@ -226,28 +216,53 @@ def train_network_on_data(network: Type[tf.keras.Model], training_data: List[Dic
         training_data (List[Dict[str, np.ndarray]]): List of training samples with board states, policies, and outcomes.
     """
    
-    # Prepare batch data
     states = np.array([data['state'] for data in training_data])
     policies = np.array([data['policy'] for data in training_data])
     values = np.array([data['value'] for data in training_data])
-    
+
+    # Convert to tensors
+    states = torch.tensor(states, dtype=torch.float32).to(network.device)
+    policies = torch.tensor(policies, dtype=torch.float32).to(network.device)
+    values = torch.tensor(values, dtype=torch.float32).unsqueeze(1).to(network.device)
+
+    # Define loss functions
+    policy_loss_fn = nn.CrossEntropyLoss()
+    value_loss_fn = nn.MSELoss()
+
+    optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
+
     # Train in mini-batches
     batch_size = 32
-    num_batches = len(training_data) // batch_size
-    
-    for batch_idx in range(num_batches):
-        start_idx = batch_idx * batch_size
-        end_idx = start_idx + batch_size
-        
-        batch_states = states[start_idx:end_idx]
-        batch_policies = policies[start_idx:end_idx]
-        batch_values = values[start_idx:end_idx]
-        
-        loss = network.train_on_batch(batch_states, [batch_policies, batch_values])
-        # loss = network.train_on_batch(batch_states, batch_policies)
-        
-        if batch_idx % 10 == 0:
-            print(f"Batch {batch_idx}/{num_batches}, Loss: {loss:.4f}")
+    num_samples = len(training_data)
+    num_batches = num_samples // batch_size + int(num_samples % batch_size > 0)
+
+    for epoch in range(1):  # Number of epochs
+        indices = np.arange(num_samples)
+        np.random.shuffle(indices)
+        for batch_idx in range(num_batches):
+            batch_indices = indices[batch_idx * batch_size: (batch_idx + 1) * batch_size]
+            batch_states = states[batch_indices]
+            batch_policies = policies[batch_indices]
+            batch_values = values[batch_indices]
+
+            optimizer.zero_grad()
+
+            policy_out, value_out = network(batch_states)
+
+            # Policy loss: cross-entropy between predicted policy and target policy
+            policy_loss = policy_loss_fn(policy_out, torch.argmax(batch_policies, dim=1))
+
+            # Value loss: mean squared error between predicted value and target value
+            value_loss = value_loss_fn(value_out, batch_values)
+
+            # Total loss
+            loss = policy_loss + value_loss
+
+            loss.backward()
+            optimizer.step()
+
+            if batch_idx % 10 == 0:
+                print(f"Batch {batch_idx}/{num_batches}, Loss: {loss.item():.4f}")
 
 def print_board_state(game):
     game.render_in_terminal()
