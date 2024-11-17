@@ -29,7 +29,6 @@ class Block(torch.nn.Module):
         out = self.conv1(out)
         out = self.batch_norm1(out)
         out = self.relu1(out)
-        #out = self.pad2(out)
         out = self.conv2(out)
         out = self.batch_norm2(out)
         out = out + x
@@ -122,7 +121,6 @@ class PolicyNetwork(torch.nn.Module):
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
         input_vector = np.expand_dims(board_state, axis=0)  # [1, 9, 9, 7]
-        input_vector = np.transpose(input_vector, (0, 3, 1, 2))  # [1, 7, 9, 9]
         input_tensor = torch.tensor(input_vector, dtype=torch.float32).to(self.device)
         return input_tensor
 
