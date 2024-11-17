@@ -98,7 +98,9 @@ class PolicyNetwork(torch.nn.Module):
             tf.Tensor: Probability distribution over possible moves.
         """
         network_input = self.prepare_input(board_state)
-        return self(network_input)[0]
+        output = self(network_input)[0]
+        probabilities = torch.softmax(output, dim=0)
+        return probabilities
 
     def prepare_input(self, board_state):
         """
