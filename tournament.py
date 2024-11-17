@@ -1,13 +1,10 @@
 from policy_network import PolicyNetwork
-import copy
 from goEnv import GoGame
 import govars
-
-from policy_network import PolicyNetwork
-import copy
-from goEnv import GoGame
-import govars
+import glob
 from collections import Counter
+import matplotlib.pyplot as plt
+import networkx as nx
 
 class Tournament:
     def __init__(self):
@@ -24,6 +21,7 @@ class Tournament:
         return self.results
 
     def play_round(self):
+        print("Playing round...")
         for i in range(len(self.players)):
             for j in range(i+1, len(self.players)):
                 player1 = self.players[i]
@@ -32,6 +30,7 @@ class Tournament:
                 self.results.append(game_result)
 
     def play_match(self, player1, player2):
+        print('Match started')
         game = GoGame(size=9)
         current_player = 'black'
         while not game.state[govars.DONE].any():
@@ -47,11 +46,13 @@ class Tournament:
                 game.step("pass")
                 current_player = 'white' if current_player == 'black' else 'black'
 
+        # Determine the winner and loser
         winner = game.determine_winner()
         if winner == 0:
-            return (player1.get_name(), player2.get_name())
+            return (player1.get_name(), player2.get_name())  # Player1 is the winner
         else:
-            return (player2.get_name(), player1.get_name())
+            return (player2.get_name(), player1.get_name())  # Player2 is the winner
+
 
     def get_tournament_results(self):
         # Count the number of wins for each player
@@ -92,7 +93,7 @@ class Player:
     def __init__(self, network):
         self.network = network
         self.player_policy = self.load_player()
-        self.name = network
+        self.name = network.model_path
 
     def get_name(self):
         return self.name
@@ -109,16 +110,115 @@ class Player:
 # Example usage
 tournament = Tournament()
 
+# List all model files in the models folder
+model_files = glob.glob("./models/*.pt")
+# Load models
+models = []
+for model_file in model_files:
+    model = PolicyNetwork(model_path=model_file)
+    models.append(model)
 
 
-player1 = Player("./models/PN_R3_C64.pt")
-player2 = Player("./models/PN_R3_C64_IMPROVED_MODEL.pt")
-player3 = Player("./models/PN_R3_C64_IMPROVED_MODEL_2.pt")
 
-tournament.add_player(player1)
-tournament.add_player(player2)
-tournament.add_player(player3)
+Players = []
+Player_count = 0
+for model in models:
+    # Added player
+    Players.append(Player(network=model))
+    print(f"Player {Player_count} added with model {model.model_path}")
+
+for player in Players:
+    while Player_count !=16:
+        tournament.add_player(player)
+        Player_count += 1
+    break
+
+
+def create_tournament_bracket(players, results, output_file="tournament_bracket.png"):
+    # Create a directed graph
+    G = nx.DiGraph()
+
+    # Create a mapping for subsets (round levels)
+    subset_mapping = {player: 0 for player in players}  # Start all players in the first round
+
+    # Add edges for matches and update subsets
+    for match in results:
+        winner, loser = match
+        G.add_edge(loser, winner)
+        subset_mapping[winner] = max(subset_mapping.get(winner, 0), subset_mapping[loser] + 1)
+
+    # Assign subset attributes to nodes
+    for player in players:
+        G.nodes[player]["subset"] = subset_mapping[player]
+
+    # Generate positions for the bracket using graphviz layout
+    pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
+    node_shapes = []
+    for node in G.nodes():
+        if G.out_degree(node) == 0 and G.in_degree(node) > 0:
+            node_shapes.append('o')  # Winner
+        else:
+            node_shapes.append('s')  # Other players
+
+    # Draw the graph
+    plt.figure(figsize=(12, 8))
+
+    # Draw nodes with different colors based on their round
+    node_colors = [subset_mapping[node] for node in G.nodes()]
+    cmap = plt.cm.cool  # Choose a color map
+
+    # Draw nodes
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        node_size=2000,
+        node_color=node_colors,
+        cmap=cmap,
+        node_shape='o',
+        alpha=0.9,
+    )
+
+    # Draw edges
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        arrowstyle='->',
+        arrowsize=15,
+        edge_color='gray',
+        width=2,
+    )
+
+    # Draw labels
+    nx.draw_networkx_labels(
+        G,
+        pos,
+        font_size=10,
+        font_weight="bold",
+    )
+
+    # Draw edge labels if you have match scores
+    # edge_labels = { (loser, winner): f"Score: {score}" for (winner, loser, score) in results }
+    # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+
+    # Save the output
+    plt.title("Tournament Bracket", fontsize=16, fontweight="bold")
+    plt.axis('off')  # Hide axes for better visualization
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.show()
+
+
+# Generate the bracket
+
+
 
 tournament.play_round()
-results = tournament.get_tournament_results()
-print(results)
+
+# Ensure the results are formatted as (winner, loser)
+results = tournament.results  # Each entry in results is now a tuple (winner, loser)
+
+# Generate players' names
+players = [player.get_name() for player in tournament.get_players()]
+
+# Generate the bracket visualization
+create_tournament_bracket(players, results)
