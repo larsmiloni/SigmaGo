@@ -61,6 +61,12 @@ class PolicyNetwork(torch.nn.Module):
         self.model_name = "VN-R" + str(self.num_res) + "-C" + str(self.num_channel)
 
         self.define_network()
+
+        
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
+        print("Using device pn:", self.device)
+        self.to(self.device)
+
         try:
             if self.model_path:
                 print("Loading model from:", self.model_path)
@@ -74,9 +80,6 @@ class PolicyNetwork(torch.nn.Module):
 
         self.loss = torch.nn.CrossEntropyLoss()
 
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
-        print("Using device pn:", self.device)
-        self.to(self.device)
 
     # def load_weights(self, model_path):
 
@@ -86,6 +89,8 @@ class PolicyNetwork(torch.nn.Module):
 
         # else:
         #     self.load_state_dict(torch.load(self.model_path, map_location=self.device))
+    
+        
 
     def predict(self, board_state):
         """
@@ -98,9 +103,10 @@ class PolicyNetwork(torch.nn.Module):
             tf.Tensor: Probability distribution over possible moves.
         """
         network_input = self.prepare_input(board_state)
-        output = self(network_input)[0]
-        probabilities = torch.softmax(output, dim=0)
-        return probabilities
+        policy_out, value_out = self(network_input)
+        probabilities = torch.softmax(policy_out[0], dim=0)
+        value = value_out[0].item()
+        return probabilities, value
 
     def prepare_input(self, board_state):
         """
@@ -145,6 +151,13 @@ class PolicyNetwork(torch.nn.Module):
             self.res_block["r" + str(i)] = Block(self.num_channel)
         print("Residual blocks defined.")
 
+        self.value_conv = nn.Conv2d(self.num_channel, 1, kernel_size=1)
+        self.value_batch_norm = nn.BatchNorm2d(1)
+        self.value_relu = nn.ReLU()
+        self.value_fc1 = nn.Linear(1 * 9 * 9, 128)
+        self.value_fc2 = nn.Linear(128, 1)
+        self.tanh = nn.Tanh()
+
     def forward(self, x):
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Expected input to be a torch.Tensor but got {type(x)}")
@@ -165,6 +178,16 @@ class PolicyNetwork(torch.nn.Module):
         out = self.policy_fc1(out)
         out = self.policy_relu(out)
         out = self.policy_fc2(out)
+
+         # Value head
+        value_out = self.value_conv(out)
+        value_out = self.value_batch_norm(value_out)
+        value_out = self.value_relu(value_out)
+        value_out = value_out.reshape(-1, 1 * 9 * 9)
+        value_out = self.value_fc1(value_out)
+        value_out = self.value_relu(value_out)
+        value_out = self.value_fc2(value_out)
+        value_out = self.tanh(value_out)  # Output value in range [-1, 1]
         return out
 
     def optimize(self, x, y, x_t, y_t, batch_size=64, iterations=10, alpha=0.001, test_interval=10, save=False):
@@ -293,30 +316,52 @@ class PolicyNetwork(torch.nn.Module):
     def save(self):
         torch.save(self.state_dict(), self.model_name+".pt")
 
+    def get_edge_mask(self, board_size):
+        mask = torch.zeros(board_size, board_size)
+        mask[0, :] = 1     # Top edge
+        mask[-1, :] = 1    # Bottom edge
+        mask[:, 0] = 1     # Left edge
+        mask[:, -1] = 1    # Right edge
+        mask = mask.flatten()
+        # Append zero for the 'pass' move
+        mask = torch.cat([mask, torch.tensor([0.0])])
+        return mask
+
     def select_move(self, game_state) -> Tuple[int, int]:
-        """
-        Selects a move based on the predicted policy.
-
-        Args:
-            game_state (GoGame): Current state of the game.
-
-        Returns:
-            tuple: Selected move as (row, col) or "pass"
-        """
         policy = self.predict(game_state.state).detach().cpu().numpy()
         legal_moves = game_state.get_legal_actions()
 
-        # Initialize list for all legal moves including pass
-        legal_move_probs = []
+        # Apply edge penalty
+        edge_mask = self.get_edge_mask(board_size=9).numpy()
+        penalty_weight = 0.5  # Adjust this value as needed
 
-        # Handle regular moves
+        # Reduce probabilities for edge moves
+        policy -= penalty_weight * edge_mask
+
+        # Ensure probabilities are non-negative
+        policy = np.maximum(policy, 0)
+
+        # Re-normalize the probabilities
+        total_prob = np.sum(policy)
+        if total_prob > 0:
+            policy /= total_prob
+        else:
+            # If all probabilities are zero, assign uniform probability to legal moves
+            policy = np.zeros_like(policy)
+            for move in legal_moves:
+                if move == "pass":
+                    policy[-1] = 1.0
+                else:
+                    policy[move[0] * 9 + move[1]] = 1.0
+            policy /= np.sum(policy)
+
+        # Proceed with selecting the move
+        legal_move_probs = []
         for move in legal_moves:
             if move == "pass":
-                # Assuming the last element in policy is for pass
                 pass_prob = policy[-1]
                 legal_move_probs.append((move, pass_prob))
             else:
-                # Regular board position moves
                 move_prob = policy[move[0] * 9 + move[1]]
                 legal_move_probs.append((move, move_prob))
 
