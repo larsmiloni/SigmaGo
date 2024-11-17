@@ -57,8 +57,8 @@ def ai_mcts_vs_random():
     create_ai_match(network, None, isMCTSvsRandom=True, games=50)
 
 def ai_cnn_vs_random():
-    network = PolicyNetwork("./models/PN_R3_C64_.pt")
-    create_ai_match(network, None, isCNNvsRandom=True, games=5)
+    network = PolicyNetwork("./models/VN-R3-C64-2.pt")
+    create_ai_match(network, None, isCNNvsRandom=True, games=1)
 
 def create_ai_match(network_player1: Type[PolicyNetwork], network_player2: Type[PolicyNetwork],
                     isHumanvsAi=False, isBothCNN=False, isBothMCTS=False,
