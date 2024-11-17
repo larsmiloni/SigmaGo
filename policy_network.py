@@ -111,9 +111,14 @@ class PolicyNetwork(torch.nn.Module):
             np.ndarray: Prepared input vector for the network.
         """
         # Ensure the input is in the correct shape (batch_size, height, width, channels)
-        input_vector = np.expand_dims(board_state, axis=0)
+        # Ensure the input is in the correct shape (batch_size, height, width, channels)
+        input_vector = np.expand_dims(board_state, axis=0)  # Add batch dimension
+        input_tensor = torch.tensor(input_vector, dtype=torch.float32)
 
-        return input_vector
+        # Move to the device of the model
+        input_tensor = input_tensor.to(self.device)
+
+        return input_tensor
 
     def define_network(self):
         print("Defining policy head...")
@@ -139,6 +144,9 @@ class PolicyNetwork(torch.nn.Module):
         print("Residual blocks defined.")
 
     def forward(self, x):
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Expected input to be a torch.Tensor but got {type(x)}")
+    
         if x.device != self.device:
             x = x.to(self.device)
         out = x
