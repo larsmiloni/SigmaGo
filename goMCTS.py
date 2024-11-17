@@ -131,7 +131,11 @@ class MCTS:
         # print(f"\nSelected move: {chr(65 + best_move[1] if best_move[1] < 8 else 66 + best_move[1])}{9 - best_move[0]}")
         print(f"Visit counts for considered moves:")
         for move, visits in sorted(visits.items(), key=lambda x: x[1], reverse=True)[:5]:
-            print(f"- {chr(65 + move[1] if move[1] < 8 else 66 + move[1])}{9 - move[0]}: {visits} visits")
+            if move == "pass":
+                print(f"- pass: {visits} visits")
+            else:
+                print(f"- {chr(65 + move[1] if move[1] < 8 else 66 + move[1])}{9 - move[0]}: {visits} visits")
+
         
         return best_move
     

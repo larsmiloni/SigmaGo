@@ -46,7 +46,7 @@ class MCTSNode:
             Tuple: The selected move and child node, or ("pass", None) if no valid move is found.
         """
 
-        # If no children exist, return "pass"
+        # If no children exist, expand or return "pass"
         if not self.children:
             return "pass", None
 
@@ -58,43 +58,40 @@ class MCTSNode:
             return "pass", None
         if set(legal_actions) == {"pass"}:
             return "pass", None
-            
-        # If no children exist but we have legal moves, expand first (should be handled outside of this function)
-        
-        # Now calculate scores for existing children
+
+        # Calculate scores for existing children
         scores = []
         moves = []
         children = list(self.children.items())
-        
+
         if not children:
             # If still no children after expansion attempt, fall back to pass
             return "pass", None
-            
+
         for move, child in children:
-            # Safe score calculation with error handling
             try:
                 q_value = child.value / max(child.visits, 1)  # Avoid division by zero
                 u_value = c_puct * child.prior * math.sqrt(max(self.visits, 1)) / (1 + child.visits)
-                rave_bonus = (rave_weight * (child.rave_value / max(child.rave_visits, 1)) 
+                rave_bonus = (rave_weight * (child.rave_value / max(child.rave_visits, 1))
                             if child.rave_visits > 0 else 0)
-                
+
                 # Add small noise for exploration and to break ties
                 noise = np.random.normal(0, 0.01)
-                score = float(q_value + u_value + rave_bonus + noise)  # Convert to float explicitly
-                
+                score = float(q_value + u_value + rave_bonus + noise)
+
                 scores.append(score)
                 moves.append((move, child))
             except Exception as e:
                 print(f"Warning: Error calculating score for move {move}: {e}")
                 continue
-        
-        # Handle case where all score calculations failed
+
+        # Handle the case where all score calculations failed
         if not scores:
             return "pass", None
-        
+
         # Convert scores to numpy array for softmax
         scores = np.array(scores, dtype=np.float32)
-        
+
         # Select top-N moves
         top_n = min(top_n, len(scores))
         indices = np.argsort(scores)[-top_n:]
@@ -106,26 +103,25 @@ class MCTSNode:
             temperature = max(0.1, min(1.0, 20.0 / (self.visits + 1)))
             scaled_scores = [s / temperature for s in top_scores]
             probs = softmax(scaled_scores)
-            
+
             # Verify probabilities sum to 1 and are valid
             if not np.isclose(sum(probs), 1.0) or np.any(np.isnan(probs)):
                 raise ValueError("Invalid probability distribution")
-                
+
             sampled_index = np.random.choice(len(top_moves), p=probs)
             selected_move, selected_child = top_moves[sampled_index]
-            
+
         except Exception as e:
             print(f"Warning: Error in move selection: {e}")
             # Fall back to highest scoring move
             selected_move, selected_child = top_moves[-1]
-        
+
         # If the selected move or child is None, return "pass"
         if selected_child is None:
             print("Warning: selected_child is None, returning 'pass'")
             return "pass", None
 
         return selected_move, selected_child
-
 
 
     def backup(self, reward):
