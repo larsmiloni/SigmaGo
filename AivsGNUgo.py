@@ -1,3 +1,6 @@
+import copy
+
+import numpy as np
 from policy_network import PolicyNetwork
 from goMCTS import MCTS
 from goEnv import GoGame
@@ -78,10 +81,14 @@ def convert_move_to_gnugo(goMCTS_move):
         print(f"converted to {column}{row}")
         return f"{column}{row}"
 
-def apply_move(game, gnugo, move, is_gnugo_move=False):
+def apply_move(game, gnugo, move, is_gnugo_move=False, mcts_policies=None):
     if move != "pass":
         # Apply the move to the GoMCTS environment
         game.step(move)
+        policy = np.zeros(83)
+        move_idx = move[0] * 9 + move[1]
+        policy[move_idx] = 1
+        mcts_policies.append(policy)
 
         # Apply the move to the GNU Go environment
         if not is_gnugo_move:
@@ -118,16 +125,22 @@ def main(simulations=1):
     # Initialize GNU Go and GoMCTS
     gnugo_wins = 0
     goMCTS_wins = 0
+    training_data = []
+    
     for _ in range(simulations):
         gnugo = run_gnugo()
-        network = PolicyNetwork(model_path="./models/VN-R3-C64-150-iter.pt")
+        network = PolicyNetwork(model_path="./models/VN-R3-C64-2.pt")
 
-        goMCTS = MCTS(network, num_simulations=70)
-        goPolicy = network
+        goMCTS = MCTS(network, num_simulations=10)
         game = GoGame(size=9)
-
+        game_states = []
+        mcts_policies = []
         while game.isGameOver==False:
             # Get move from GNU Go
+            current_state = copy.deepcopy(game.state)
+            
+            # Store current state before move
+            game_states.append(current_state)
         
             sleep(1)
             gnugo_move = send_command(gnugo, 'genmove black')
@@ -137,7 +150,7 @@ def main(simulations=1):
 
             # Apply GNU Go move to the GoMCTS environment
             goMCTS_move = convert_move_to_goMCTS(gnugo_move)
-            apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True)
+            apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True, mcts_policies=mcts_policies)
 
             # Get move from GoMCTS
             goMCTS_move = goMCTS.search(game)
@@ -151,9 +164,8 @@ def main(simulations=1):
 
             # Check for game end conditions
             
-            if gnugo_move == 'resign' or goMCTS_move == 'resign':
-                print("Game over")
-                break
+            # Create policy vector from the move
+                
 
         # Game over - evaluate result
         winner = game.determine_winner()
@@ -163,6 +175,16 @@ def main(simulations=1):
             gnugo_wins += 1
         else:
             goMCTS_wins += 1
+        
+        for state, policy in zip(game.state, mcts_policies):
+            training_data.append({
+                'state': state,
+                'policy': policy,
+                'value': winner
+            })
+
+        goMCTS.train_network_on_data(network, training_data)
+        network.save(f"models/VN-R3-C64-2-{simulations}.pt") 
             
     gnugo_winrate, goMCTS_winrate = plot_winrate_over_games(gnugo_wins, goMCTS_wins)
     print(f"GNU Go win ratio: {gnugo_winrate:.2f}")
