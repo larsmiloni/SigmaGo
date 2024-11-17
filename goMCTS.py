@@ -254,10 +254,10 @@ def self_play_training(network: Type[tf.keras.Model], num_games=10, mcts_simulat
                 print("Random (White) wins!")
     
         
-    # Update win tracking lists
-    ai_wins.append(ai_win_count)
-    random_wins.append(random_win_count)
-    #train the network
+        # Update win tracking lists
+        ai_wins.append(ai_win_count)
+        random_wins.append(random_win_count)
+        #train the network
     
 
 
