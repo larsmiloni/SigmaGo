@@ -284,7 +284,7 @@ def print_board_state(game):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
     # Load pre-trained network
-    model_path = "models/VN-R3-C64-150-iter.pt"
+    model_path = "models/VN-R3-C64_new.pt"
     print("Initializing network...")
     try:
         network = PolicyNetwork(model_path=model_path)
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     )
 
     # Save the improved network
-    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL_150_iter.pt")  # Saves full model
+    improved_network.save("models/PN_R3_C64_IMPROVED_MODEL_1.pt")  # Saves full model
     
    
     
