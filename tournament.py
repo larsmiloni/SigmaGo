@@ -246,11 +246,11 @@ class Player:
 
 # Example usage
 def main():
-    tournament_runs = 2  # Number of tournament runs
+    tournament_runs = 50  # Number of tournament runs
     all_placements = []  # List to store placements from each run
 
     # List all model files in the models folder
-    model_files = glob.glob("./models/*.pt")
+    model_files = glob.glob("./models/50-sims/*.pt")
 
     if len(model_files) < 2:
         print("Need at least 2 models to start the tournament.")
