@@ -144,7 +144,7 @@ def main(simulations=1):
         print(f"\nSimulation {sim}/{simulations}")
         gnugo = run_gnugo()
         if sim> 0:
-            network = PolicyNetwork(model_path=f"models/VN-R3-C64-2-GNU-GO-{simulations-1}.pt")
+            network = PolicyNetwork(model_path=f"models/VN-R3-C64-2-GNU-GO-{sim-1}.pt")
         else:
             network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2.pt")
 
