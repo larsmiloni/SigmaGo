@@ -12,6 +12,12 @@ class Tournament:
         self.players = []
         self.results = []
         self.stages = ["Quarterfinals", "Semifinals", "Final"]
+        self.placement_matches = {
+            "5th-8th Semifinals": [],
+            "5th-6th Place": [],
+            "7th-8th Place": [],
+            "3rd Place": []
+        }
 
     def add_player(self, player):
         self.players.append(player)
@@ -19,11 +25,11 @@ class Tournament:
     def get_players(self):
         return self.players
 
-    def get_results(self):
-        return self.results
     
     def reset_results(self):
         self.results = []
+        for key in self.placement_matches:
+            self.placement_matches[key] = []
 
     def play_tournament(self):
         if len(self.players) < 2:
@@ -34,61 +40,136 @@ class Tournament:
         stage_index = 0
         placements = {}  # player_name: placement
 
-        while len(current_stage_players) > 1 and stage_index < len(self.stages):
-            stage = self.stages[stage_index]
-            print(f"\n----- ({stage}) -----")
+        # Quarterfinals
+        print(f"\n----- ({self.stages[stage_index]}) -----")
+        random.shuffle(current_stage_players)
+        winners_qf = []
+        losers_qf = []
 
-            # Shuffle players to randomize matchups
-            random.shuffle(current_stage_players)
+        for i in range(0, len(current_stage_players), 2):
+            if i + 1 < len(current_stage_players):
+                player1 = current_stage_players[i]
+                player2 = current_stage_players[i + 1]
+                winner, loser = self.play_match(player1, player2)
+                self.results.append((self.stages[stage_index], player1.get_name(), player2.get_name(), winner.get_name()))
+                winners_qf.append(winner)
+                losers_qf.append(loser)
+            else:
+                # If odd number of players, the last player gets a bye
+                player = current_stage_players[i]
+                print(f"{player.get_name()} gets a bye to the next round.")
+                winners_qf.append(player)
 
-            next_round_players = []
-            for i in range(0, len(current_stage_players), 2):
-                if i + 1 < len(current_stage_players):
-                    player1 = current_stage_players[i]
-                    player2 = current_stage_players[i + 1]
-                    winner, loser = self.play_match(player1, player2)
-                    self.results.append((stage, player1.get_name(), player2.get_name(), winner.get_name()))
-                    next_round_players.append(winner)
-                else:
-                    # If odd number of players, the last player gets a bye
-                    player = current_stage_players[i]
-                    print(f"{player.get_name()} gets a bye to the next round.")
-                    next_round_players.append(player)
+        stage_index += 1
 
-            current_stage_players = next_round_players
-            stage_index += 1
+        # 5th-8th Semifinals
+        print(f"\n----- (5th-8th Semifinals) -----")
+        random.shuffle(losers_qf)
+        winners_5_8_sf = []
+        losers_5_8_sf = []
 
-        if current_stage_players:
-            champion = current_stage_players[0]
-            print(f"\n----- Tournament Champion -----")
-            print(f"The champion is: {champion.get_name()}")
-            placements[champion.get_name()] = 1  # 1st place
+        for i in range(0, len(losers_qf), 2):
+            if i + 1 < len(losers_qf):
+                player1 = losers_qf[i]
+                player2 = losers_qf[i + 1]
+                winner, loser = self.play_match(player1, player2)
+                self.results.append(("5th-8th Semifinals", player1.get_name(), player2.get_name(), winner.get_name()))
+                self.placement_matches["5th-8th Semifinals"].append((player1.get_name(), player2.get_name(), winner.get_name()))
+                winners_5_8_sf.append(winner)
+                losers_5_8_sf.append(loser)
+            else:
+                # If odd, assign bye
+                player = losers_qf[i]
+                print(f"{player.get_name()} gets a bye in 5th-8th Semifinals.")
+                winners_5_8_sf.append(player)
 
-            # Assign 2nd place (runner-up)
-            if len(current_stage_players) > 1:
-                runner_up = None
-                # Find the last match to get the runner-up
-                last_stage_results = [res for res in self.results if res[0] == self.stages[stage_index - 1]]
-                if last_stage_results:
-                    _, p1, p2, winner = last_stage_results[-1]
-                    runner_up = p2 if winner == p1 else p1
-                    placements[runner_up] = 2
-                    print(f"Runner-up: {runner_up}")
+        # Semifinals
+        print(f"\n----- ({self.stages[stage_index]}) -----")
+        random.shuffle(winners_qf)
+        winners_sf = []
+        losers_sf = []
 
-            # Assign 3rd place
-            # This implementation does not include a match for 3rd place.
-            # You can add this feature if needed.
+        for i in range(0, len(winners_qf), 2):
+            if i + 1 < len(winners_qf):
+                player1 = winners_qf[i]
+                player2 = winners_qf[i + 1]
+                winner, loser = self.play_match(player1, player2)
+                self.results.append((self.stages[stage_index], player1.get_name(), player2.get_name(), winner.get_name()))
+                winners_sf.append(winner)
+                losers_sf.append(loser)
+            else:
+                player = winners_qf[i]
+                print(f"{player.get_name()} gets a bye to the next round.")
+                winners_sf.append(player)
+
+        stage_index += 1
+
+        # 5th-6th Place Match
+        if len(winners_5_8_sf) >= 2:
+            print(f"\n----- (5th-6th Place Match) -----")
+            player1, player2 = winners_5_8_sf[:2]
+            winner, loser = self.play_match(player1, player2)
+            self.results.append(("5th-6th Place", player1.get_name(), player2.get_name(), winner.get_name()))
+            self.placement_matches["5th-6th Place"].append((player1.get_name(), player2.get_name(), winner.get_name()))
+            placements[winner.get_name()] = 5
+            placements[loser.get_name()] = 6
+        elif len(winners_5_8_sf) == 1:
+            player = winners_5_8_sf[0]
+            placements[player.get_name()] = 5
+            print(f"{player.get_name()} is assigned 5th place by default.")
+
+        # 7th-8th Place Match
+        if len(losers_5_8_sf) >= 2:
+            print(f"\n----- (7th-8th Place Match) -----")
+            player1, player2 = losers_5_8_sf[:2]
+            winner, loser = self.play_match(player1, player2)
+            self.results.append(("7th-8th Place", player1.get_name(), player2.get_name(), winner.get_name()))
+            self.placement_matches["7th-8th Place"].append((player1.get_name(), player2.get_name(), winner.get_name()))
+            placements[winner.get_name()] = 7
+            placements[loser.get_name()] = 8
+        elif len(losers_5_8_sf) == 1:
+            player = losers_5_8_sf[0]
+            placements[player.get_name()] = 7
+            print(f"{player.get_name()} is assigned 7th place by default.")
+
+        # Semifinal Losers Play for 3rd Place
+        if len(losers_sf) >= 2:
+            print(f"\n----- (3rd Place Match) -----")
+            player1, player2 = losers_sf[:2]
+            winner, loser = self.play_match(player1, player2)
+            self.results.append(("3rd Place", player1.get_name(), player2.get_name(), winner.get_name()))
+            self.placement_matches["3rd Place"].append((player1.get_name(), player2.get_name(), winner.get_name()))
+            placements[winner.get_name()] = 3
+            placements[loser.get_name()] = 4
+        elif len(losers_sf) == 1:
+            player = losers_sf[0]
+            placements[player.get_name()] = 3
+            print(f"{player.get_name()} is assigned 3rd place by default.")
+
+        # Final Match
+        if len(winners_sf) >= 2:
+            print(f"\n----- (Final) -----")
+            player1, player2 = winners_sf[:2]
+            winner, loser = self.play_match(player1, player2)
+            self.results.append(("Final", player1.get_name(), player2.get_name(), winner.get_name()))
+            placements[winner.get_name()] = 1
+            placements[loser.get_name()] = 2
+            print(f"Runner-up: {loser.get_name()}")
+            print(f"Champion: {winner.get_name()}")
+        elif len(winners_sf) == 1:
+            player = winners_sf[0]
+            placements[player.get_name()] = 1
+            print(f"{player.get_name()} is assigned Champion by default.")
         else:
-            print("No champion could be determined.")
+            print("No final match could be determined.")
 
-        # Assign placements for players who did not reach the final stages
-        # This is a simplistic approach and can be enhanced
+        # Assign placements for any remaining players (if any)
         all_player_names = [player.get_name() for player in self.players]
         for player in all_player_names:
             if player not in placements:
-                # Assign a placement based on elimination round
-                # For simplicity, assign the next available placement
-                placements[player] = len(placements) + 1
+                # Assign a placement based on elimination round or default to 8
+                placements[player] = 8
+                print(f"{player} is assigned 8th place by default.")
 
         return placements
 
@@ -122,8 +203,7 @@ class Tournament:
     def get_tournament_results(self):
         return self.results
 
-    
-    
+
 def calculate_mean_placements(all_placements, players):
     placement_sums = defaultdict(float)
     placement_counts = defaultdict(int)
@@ -142,6 +222,7 @@ def calculate_mean_placements(all_placements, players):
             mean_placements[player] = float('inf')  # If player was never placed
 
     return mean_placements
+
 
 
 class Player:
@@ -165,7 +246,7 @@ class Player:
 
 # Example usage
 def main():
-    tournament_runs = 5  # Number of tournament runs
+    tournament_runs = 2  # Number of tournament runs
     all_placements = []  # List to store placements from each run
 
     # List all model files in the models folder
@@ -232,16 +313,27 @@ def main():
         players_sorted = [player for player, _ in sorted_mean]
         means = [mean_placements[player] for player in players_sorted]
 
-        plt.figure(figsize=(10, 6))
-        plt.bar(players_sorted, means, color='skyblue')
+        plt.figure(figsize=(12, 8))
+        bars = plt.bar(players_sorted, means, color='skyblue')
         plt.xlabel('Players')
         plt.ylabel('Mean Placement')
-        plt.title('Mean Placement of Players Over {} Tournament Runs'.format(tournament_runs))
+        plt.title(f'Mean Placement of Players Over {tournament_runs} Tournament Runs')
         plt.xticks(rotation=45, ha='right')
+
+        # Annotate bars with the mean values
+        for bar, mean in zip(bars, means):
+            height = bar.get_height()
+            plt.annotate(f'{mean:.2f}',
+                         xy=(bar.get_x() + bar.get_width() / 2, height),
+                         xytext=(0, 3),  # 3 points vertical offset
+                         textcoords="offset points",
+                         ha='center', va='bottom')
+
         plt.tight_layout()
         plt.savefig("mean_placements.png")
     except Exception as e:
         print(f"Visualization failed: {e}")
+
 
 if __name__ == "__main__":
     main()
