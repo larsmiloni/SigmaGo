@@ -148,7 +148,7 @@ def main(simulations=1):
         else:
             network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2.pt")
 
-        goMCTS = MCTS(network, num_simulations=2)
+        goMCTS = MCTS(network, num_simulations=50)
         game = GoGame(size=9)
         game.reset()  # Reset the game state
         game_states = []
@@ -179,10 +179,12 @@ def main(simulations=1):
                 apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True, mcts_policies=mcts_policies)
 
                 if gnugo_move == " PASS":
-                    pass_count_gnu_go += 1
-                    if pass_count_mcts and pass_count_gnu_go >= 1:
+                    print('GNO go passes pass count 1')
+                    pass_count_gnu_go = 1
+                    if pass_count_mcts and pass_count_gnu_go == 1:
                         #both has passed
                         game.isGameOver = True
+                        break
                 else:
                     pass_count_gnu_go = 0
 
@@ -194,10 +196,11 @@ def main(simulations=1):
                 # Convert and apply GoMCTS move
                 apply_move(game, gnugo, goMCTS_move, is_gnugo_move=False, mcts_policies=mcts_policies)
                 if goMCTS_move == "pass":
-                    pass_count_mcts += 1
-                    if pass_count_mcts and pass_count_gnu_go >= 1:
+                    pass_count_mcts = 1
+                    if pass_count_mcts and pass_count_gnu_go == 1:
                         #both has passed
                         game.isGameOver = True
+                        break
                 else:   
                     pass_count_mcts = 0
 
