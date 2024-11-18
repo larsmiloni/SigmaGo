@@ -26,7 +26,7 @@ coor_map = {
 def run_gnugo():
     # Start GNU Go subprocess
     gnugo_process = subprocess.Popen(
-        ['gnugo', '--mode', 'gtp', '--chinese-rules', '--boardsize', '9', '--level', '0', '--komi', '7.5'],
+        ['gnugo', '--mode', 'gtp', '--chinese-rules', '--boardsize', '9', '--level', '10', '--komi', '5.5'],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

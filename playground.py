@@ -54,12 +54,12 @@ def ai_vs_ai_cnn():
     create_ai_match(network_player1, network_player2, isBothCNN=True)
 
 def ai_mcts_vs_random():
-    network = PolicyNetwork("./models/VN-R3-C64-2.pt")
+    network = PolicyNetwork("./models/10-sims/VN-R3-C64-2-GNO-GO-9-10-sims.pt")
     create_ai_match(network, None, isMCTSvsRandom=True, games=5)
 
 def ai_cnn_vs_random():
-    network = PolicyNetwork("./models/VN-R3-C64-2.pt")
-    create_ai_match(network, None, isCNNvsRandom=True, games=10)
+    network = PolicyNetwork("./models/50-sims/VN-R3-C64-2-GNO-GO-4-50-sims.pt")
+    create_ai_match(network, None, isCNNvsRandom=True, games=50)
 
 def create_ai_match(network_player1: Type[PolicyNetwork], network_player2: Type[PolicyNetwork],
                     isHumanvsAi=False, isBothCNN=False, isBothMCTS=False,
