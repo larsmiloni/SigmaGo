@@ -1,4 +1,5 @@
 import copy
+import os
 
 import numpy as np
 from policy_network import PolicyNetwork
@@ -102,7 +103,7 @@ def apply_move(game, gnugo, move, is_gnugo_move=False, mcts_policies=None):
             send_command(gnugo, "play white pass")
     game.render_in_terminal()
 
-def plot_winrate_over_games(gnugo_wins, goMCTS_wins, filename="win_ratio.png"):
+def plot_winrate_over_games(gnugo_wins, goMCTS_wins, gnugo_wins_list, goMCTS_wins_list, filename="win_ratio.png"):
     total_games = gnugo_wins + goMCTS_wins
     gnugo_winrate = gnugo_wins / total_games
     goMCTS_winrate = goMCTS_wins / total_games
@@ -116,6 +117,16 @@ def plot_winrate_over_games(gnugo_wins, goMCTS_wins, filename="win_ratio.png"):
     plt.legend()
     plt.savefig(filename)
     print(f"Plot saved to: {filename}")
+    # Plotting AI vs Random wins over games
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, total_games + 1), goMCTS_wins_list, label="AI Wins", marker="o")
+    plt.plot(range(1, total_games + 1), gnugo_wins_list, label="Gnu Go Wins", marker="x")
+    plt.title("AI Wins vs GnuGo Wins Over Games")
+    plt.xlabel("Games")
+    plt.ylabel("Wins")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("ai_vs_GNUgo.png") 
     return gnugo_winrate, goMCTS_winrate
 
 
@@ -126,19 +137,24 @@ def main(simulations=1):
     gnugo_wins = 0
     goMCTS_wins = 0
     training_data = []
+    ai_wins_list = []
+    gnoGo_wins_list = []
 
     for sim in range(simulations):
+        print(f"\nSimulation {sim}/{simulations}")
         gnugo = run_gnugo()
         if sim> 0:
-            network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2-{simulations-1}.pt")
+            network = PolicyNetwork(model_path=f"models/VN-R3-C64-2-GNU-GO-{simulations-1}.pt")
         else:
             network = PolicyNetwork(model_path=f"./models/VN-R3-C64-2.pt")
 
-        goMCTS = MCTS(network, num_simulations=10)
+        goMCTS = MCTS(network, num_simulations=2)
         game = GoGame(size=9)
         game.reset()  # Reset the game state
         game_states = []
         mcts_policies = []
+        pass_count_gnu_go = 0
+        pass_count_mcts = 0
 
         while not game.isGameOver:
             # Determine the current player
@@ -162,6 +178,14 @@ def main(simulations=1):
                 goMCTS_move = convert_move_to_goMCTS(gnugo_move)
                 apply_move(game, gnugo, goMCTS_move, is_gnugo_move=True, mcts_policies=mcts_policies)
 
+                if gnugo_move == " PASS":
+                    pass_count_gnu_go += 1
+                    if pass_count_mcts and pass_count_gnu_go >= 1:
+                        #both has passed
+                        game.isGameOver = True
+                else:
+                    pass_count_gnu_go = 0
+
             else:
                 # GoMCTS (White) makes a move
                 goMCTS_move = goMCTS.search(game)
@@ -169,6 +193,13 @@ def main(simulations=1):
 
                 # Convert and apply GoMCTS move
                 apply_move(game, gnugo, goMCTS_move, is_gnugo_move=False, mcts_policies=mcts_policies)
+                if goMCTS_move == "pass":
+                    pass_count_mcts += 1
+                    if pass_count_mcts and pass_count_gnu_go >= 1:
+                        #both has passed
+                        game.isGameOver = True
+                else:   
+                    pass_count_mcts = 0
 
             # Check for game end conditions are handled within game.step()
 
@@ -181,6 +212,9 @@ def main(simulations=1):
         else:
             goMCTS_wins += 1
 
+        ai_wins_list.append(goMCTS_wins)
+        gnoGo_wins_list.append(gnugo_wins)
+
         # Collect training data
         for (state, player), policy in zip(game_states, mcts_policies):
             features = extract_features(state, player)
@@ -192,14 +226,15 @@ def main(simulations=1):
 
         # Train the network
         train_network_on_data(network, training_data)
-        network.save(path=f"models/VN-R3-C64-2-{sim}.pt")
+        network.save(path=f"./models/VN-R3-C64-2-GNU-GO-{sim}.pt")
 
     # Plot win rates
-    gnugo_winrate, goMCTS_winrate = plot_winrate_over_games(gnugo_wins, goMCTS_wins)
+    gnugo_winrate, goMCTS_winrate = plot_winrate_over_games(gnugo_wins, goMCTS_wins, gnoGo_wins_list, ai_wins_list)
     print(f"GNU Go win ratio: {gnugo_winrate:.2f}")
     print(f"GoMCTS win ratio: {goMCTS_winrate:.2f}")
 
 if __name__ == "__main__":
+    os.makedirs('models', exist_ok=True)
     try:
         simulations = int(sys.argv[1])
     except (IndexError, ValueError):
