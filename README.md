@@ -5,11 +5,7 @@ SigmaGo is a Go playing model for 9x9 board size. It is implemented using both r
 
 ## Running the Code
 
-To train the `policy network`, first decompress the pickles with the following command:
-
-```
-tar -xzvf pickles.tar.gz
-```
+To train the model, first decompress the raw datasets using `decompress_datasets.py`. Then run `load_sgf` to parse the files into pickle files.
 
 Proceed by running `policy_network.py`, adjusting parameters in the main function to your needs.
 
