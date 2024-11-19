@@ -1,8 +1,7 @@
-import copy
 import math
 import numpy as np
 from scipy.special import softmax
-import torch
+
 
 class MCTSNode:
     """
@@ -19,6 +18,10 @@ class MCTSNode:
 
 
     def __init__(self, game_state, parent=None, move=None, prior=0.0):
+        """
+        Initializes a new MCTSNode with the given game state,
+        parent node, move, and prior probability.
+        """
         self.game_state = game_state
         self.parent = parent
         self.move = move
