@@ -103,10 +103,7 @@ class PolicyNetwork(torch.nn.Module):
         torch.cuda.empty_cache()
         super(PolicyNetwork, self).__init__()
         torch.cuda.empty_cache()
-        print("Policy Network Created 1")
-        #self.input_channels = num_channel
         self.model_path = model_path
-        print('Model path:', self.model_path)
         self.state_channel = 7
         self.num_res = num_res
         self.res_block = torch.nn.ModuleDict()
@@ -126,7 +123,6 @@ class PolicyNetwork(torch.nn.Module):
 
         
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu:0')
-        print("Using device pn:", self.device)
         self.to(self.device)
 
         try:
@@ -191,17 +187,15 @@ class PolicyNetwork(torch.nn.Module):
         """
         Defines the architecture of the policy network, including the policy head and residual blocks.
         """
-        print("Defining network start...")
+        print("Defining network...")
         # Network start
         self.conv = nn.Conv2d(self.state_channel, self.num_channel, kernel_size=1)
         self.batch_norm = nn.BatchNorm2d(self.num_channel)
         self.network_relu = nn.ReLU()
-        print("Network start defined.")
 
         print("Defining residual blocks...")
         for i in range(1, self.num_res + 1):
             self.res_block["r" + str(i)] = Block(self.num_channel)
-        print("Residual blocks defined.")
 
         print("Defining policy head...")
         # Policy head
@@ -221,6 +215,7 @@ class PolicyNetwork(torch.nn.Module):
         self.value_fc2 = nn.Linear(128, 1)
         self.tanh = nn.Tanh()
         print("Value head defined.")
+        print("Network defined.")
 
     def forward(self, x):
         """
