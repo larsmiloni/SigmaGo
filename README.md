@@ -5,6 +5,11 @@ SigmaGo is a Go playing model for 9x9 board size. It is implemented using both r
 
 ## Running the Code
 
+### Prerequisites
+Before running any code, ensure that:
+- The SigmaGo directory is loaded into the path.
+- [GNUGo](https://www.gnu.org/software/gnugo/download.html) is installed and loaded as a path variable.
+
 To train the model, first decompress the raw datasets using `decompress_datasets.py`. Then run `load_sgf.py` to parse the files into pickle files.
 
 Proceed by running `policy_network.py`, adjusting parameters in the main function to your needs.
