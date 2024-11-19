@@ -8,7 +8,6 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from torch import nn
 from datetime import datetime
-from time import sleep
 
 class Block(torch.nn.Module):
     """
@@ -36,11 +35,9 @@ class Block(torch.nn.Module):
             num_channel (int): The number of input and output channels for the convolutional layers.
         """
         super(Block, self).__init__()
-        self.pad1 = torch.nn.ZeroPad2d(1)
-        self.conv1 = torch.nn.Conv2d(num_channel, num_channel, kernel_size=2)
+        self.conv1 = torch.nn.Conv2d(num_channel, num_channel, kernel_size=2, padding=1)
         self.batch_norm1 = torch.nn.BatchNorm2d(num_channel)
         self.relu1 = torch.nn.ReLU()
-        self.pad2 = torch.nn.ZeroPad2d(1)
         self.conv2 = torch.nn.Conv2d(num_channel, num_channel, kernel_size=2)
         self.batch_norm2 = torch.nn.BatchNorm2d(num_channel)
         self.relu2 = torch.nn.ReLU()
@@ -56,8 +53,7 @@ class Block(torch.nn.Module):
         Returns:
             torch.Tensor: The output tensor after applying the residual block.
         """
-        out = self.pad1(x)
-        out = self.conv1(out)
+        out = self.conv1(x)
         out = self.batch_norm1(out)
         out = self.relu1(out)
         out = self.conv2(out)
@@ -139,17 +135,6 @@ class PolicyNetwork(torch.nn.Module):
         self.value_loss_fn = torch.nn.MSELoss()
 
 
-    # def load_weights(self, model_path):
-
-        # if self.device != 'cpu:0':
-
-        # self.load_weights(model_path)
-
-        # else:
-        #     self.load_state_dict(torch.load(self.model_path, map_location=self.device))
-    
-        
-
     def predict(self, board_state):
         """
         Predicts the move probabilities for a given board state.
@@ -184,10 +169,7 @@ class PolicyNetwork(torch.nn.Module):
         return input_tensor
 
     def define_network(self):
-        """
-        Defines the architecture of the policy network, including the policy head and residual blocks.
-        """
-        print("Defining network...")
+        print("Defining network start...")
         # Network start
         self.conv = nn.Conv2d(self.state_channel, self.num_channel, kernel_size=1)
         self.batch_norm = nn.BatchNorm2d(self.num_channel)
@@ -204,6 +186,7 @@ class PolicyNetwork(torch.nn.Module):
         self.policy_relu = nn.ReLU()
         self.policy_fc1 = nn.Linear(2 * 9 * 9, 128)
         self.policy_fc2 = nn.Linear(128, 82)
+        self.policy_flatten = nn.Flatten()
         print("Policy head defined.")
 
         print("Defining value head...")
@@ -213,6 +196,7 @@ class PolicyNetwork(torch.nn.Module):
         self.value_relu = nn.ReLU()
         self.value_fc1 = nn.Linear(1 * 9 * 9, 128)
         self.value_fc2 = nn.Linear(128, 1)
+        self.value_flatten = nn.Flatten()
         self.tanh = nn.Tanh()
         print("Value head defined.")
         print("Network defined.")
@@ -246,7 +230,7 @@ class PolicyNetwork(torch.nn.Module):
         policy_out = self.policy_conv(res_out)
         policy_out = self.policy_batch_norm(policy_out)
         policy_out = self.policy_relu(policy_out)
-        policy_out = policy_out.reshape(-1, 2 * 9 * 9)
+        policy_out = self.policy_flatten(policy_out)
         policy_out = self.policy_fc1(policy_out)
         policy_out = self.policy_relu(policy_out)
         policy_out = self.policy_fc2(policy_out)
@@ -255,7 +239,7 @@ class PolicyNetwork(torch.nn.Module):
         value_out = self.value_conv(res_out)
         value_out = self.value_batch_norm(value_out)
         value_out = self.value_relu(value_out)
-        value_out = value_out.reshape(-1, 1 * 9 * 9)
+        value_out = self.value_flatten(value_out)
         value_out = self.value_fc1(value_out)
         value_out = self.value_relu(value_out)
         value_out = self.value_fc2(value_out)
@@ -628,7 +612,6 @@ def main():
     """
     Main function to train the PolicyNetwork on the Go game dataset.
     """
-    sleep(5)
     pn = PolicyNetwork(alpha=0.01, num_res=3, num_channel=64)
     x_train, y_train_policy, y_train_value, x_test, y_test_policy, y_test_value = load_features_labels(0.2)
 
