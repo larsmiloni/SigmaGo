@@ -3,10 +3,9 @@ from src.ai.policy_network import PolicyNetwork
 from src.game.goEnv import GoGame
 import src.utils.govars as govars
 import glob
-from collections import Counter, defaultdict
+from collections import defaultdict
 import matplotlib.pyplot as plt
-import networkx as nx
-from typing import List, Tuple
+from typing import Tuple
 
 class Player:
     """
